@@ -21,6 +21,11 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -160,4 +165,16 @@ model Review {
   createdAt DateTime @default(now())
 
   @@unique([userId, productId])
+}
+
+model GalleryMedia {
+  id        String    @id @default(cuid())
+  title     String
+  type      MediaType
+  url       String
+  poster    String?
+  published Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
