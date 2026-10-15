@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
+import type { Provider } from "next-auth/providers";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import type { Role } from "@prisma/client";
@@ -21,18 +22,7 @@ declare module "next-auth" {
   }
 }
 
-const providers = [];
-
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  providers.push(
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    })
-  );
-}
-
-providers.push(
+const providers: Provider[] = [
   Credentials({
     name: "credentials",
     credentials: {
@@ -58,8 +48,17 @@ providers.push(
         role: user.role,
       };
     },
-  })
-);
+  }),
+];
+
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    })
+  );
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -82,4 +81,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
+  trustHost: true,
 });
