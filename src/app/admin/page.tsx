@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Package, ShoppingCart, AlertTriangle, Truck, TrendingUp, Plus, Download } from "lucide-react";
+import { Package, ShoppingCart, AlertTriangle, Truck, Plus, Download, Image as ImageIcon } from "lucide-react";
 
 export default function AdminPage() {
   return (
@@ -7,10 +7,18 @@ export default function AdminPage() {
       <aside className="hidden w-56 shrink-0 border-r border-[var(--border)] bg-[var(--card)] p-4 md:block">
         <p className="mb-6 text-xs font-bold uppercase tracking-widest text-cyan-400">Admin Console</p>
         <nav className="space-y-1">
-          {["Inventory", "Orders", "Analytics"].map((label, i) => (
-            <button key={label} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium ${
-              i === 0 ? "bg-cyan-500/15 text-cyan-400" : "text-[var(--muted)] hover:bg-white/5 hover:text-white"}`}>{label}</button>
-          ))}
+          <button className="flex w-full items-center gap-2.5 rounded-lg bg-cyan-500/15 px-3 py-2.5 text-sm font-medium text-cyan-400">
+            Inventory
+          </button>
+          <Link href="/admin/gallery" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-white">
+            Gallery Media
+          </Link>
+          <button className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-white">
+            Orders
+          </button>
+          <button className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-white">
+            Analytics
+          </button>
           <Link href="/" className="mt-4 flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-white">Exit to Store</Link>
         </nav>
       </aside>
@@ -21,6 +29,9 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold text-white">Inventory & Order Fulfillment</h1>
           </div>
           <div className="flex gap-2">
+            <Link href="/admin/gallery" className="btn-secondary flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+              <ImageIcon className="h-4 w-4" /> Gallery Media
+            </Link>
             <button className="btn-secondary flex items-center gap-2 rounded-lg px-4 py-2 text-sm"><Download className="h-4 w-4" /> Export</button>
             <button className="btn-primary flex items-center gap-2 rounded-lg px-4 py-2 text-sm"><Plus className="h-4 w-4" /> New SKU</button>
           </div>
