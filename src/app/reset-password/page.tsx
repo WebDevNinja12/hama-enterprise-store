@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import PasswordInput from "@/components/PasswordInput";
 
 function ResetForm() {
@@ -16,6 +16,15 @@ function ResetForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(90);
+
+  // Client-side hint countdown (server still enforces 90s expiry)
+  useEffect(() => {
+    const t = setInterval(() => {
+      setSecondsLeft((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,6 +35,10 @@ function ResetForm() {
     }
     if (!token || !email) {
       setError("Invalid reset link. Request a new one.");
+      return;
+    }
+    if (secondsLeft <= 0) {
+      setError("This link has expired. Request a new reset email.");
       return;
     }
 
@@ -52,8 +65,15 @@ function ResetForm() {
       <h1 className="mb-1 text-2xl font-bold text-[var(--heading)]">
         Choose a new password
       </h1>
-      <p className="mb-6 text-sm text-[var(--muted)]">
+      <p className="mb-2 text-sm text-[var(--muted)]">
         {email ? `Account: ${email}` : "Enter your new password below."}
+      </p>
+      <p
+        className={`mb-6 text-sm font-semibold ${
+          secondsLeft <= 20 ? "text-red-400" : "text-amber-400"
+        }`}
+      >
+        Link time remaining: {secondsLeft}s
       </p>
 
       {error && (
@@ -96,7 +116,7 @@ function ResetForm() {
         </div>
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || secondsLeft <= 0}
           className="btn-primary w-full py-3 text-sm disabled:opacity-50"
         >
           {loading ? "Saving..." : "Update password"}
@@ -104,8 +124,12 @@ function ResetForm() {
       </form>
 
       <p className="mt-6 text-center text-sm text-[var(--muted)]">
+        <Link href="/forgot-password" className="text-cyan-400 hover:underline">
+          Request a new link
+        </Link>
+        {" · "}
         <Link href="/login" className="text-cyan-400 hover:underline">
-          Back to sign in
+          Sign in
         </Link>
       </p>
     </div>
@@ -115,11 +139,7 @@ function ResetForm() {
 export default function ResetPasswordPage() {
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4 py-16">
-      <Suspense
-        fallback={
-          <p className="text-[var(--muted)]">Loading...</p>
-        }
-      >
+      <Suspense fallback={<p className="text-[var(--muted)]">Loading...</p>}>
         <ResetForm />
       </Suspense>
     </div>

@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -24,16 +22,9 @@ export default function ForgotPasswordPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
-
-      if (data.found && data.resetPath) {
-        setMessage("Account found. Redirecting to reset form...");
-        router.push(data.resetPath);
-        return;
-      }
-
       setMessage(
         data.message ||
-          "If an account exists for that email, follow the next steps to reset."
+          "If an account exists, a verification email was sent. The link expires in 90 seconds."
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
@@ -49,8 +40,8 @@ export default function ForgotPasswordPage() {
           Reset password
         </h1>
         <p className="mb-6 text-sm text-[var(--muted)]">
-          Enter the email on your account. We&apos;ll take you to set a new
-          password.
+          We&apos;ll email you a verification link. It expires in{" "}
+          <strong className="text-amber-400">90 seconds</strong>.
         </p>
 
         {error && (
@@ -81,7 +72,7 @@ export default function ForgotPasswordPage() {
             disabled={loading}
             className="btn-primary w-full py-3 text-sm disabled:opacity-50"
           >
-            {loading ? "Checking..." : "Continue"}
+            {loading ? "Sending..." : "Send verification email"}
           </button>
         </form>
 

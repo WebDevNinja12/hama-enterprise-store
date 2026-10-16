@@ -1,45 +1,63 @@
 "use client";
 
 import Link from "next/link";
-import { Trash2, ShoppingBag, ArrowRight } from "lucide-react";
-import { useCart } from "@/context/CartContext";
+import { Minus, Plus, Trash2, ShoppingBag, Clock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { formatCountdown, useCart } from "@/context/CartContext";
 
 export default function CartPage() {
-  const { items, removeItem, updateQty, subtotal, totalItems, clearCart } =
-    useCart();
+  const {
+    items,
+    updateQty,
+    removeItem,
+    clearCart,
+    subtotal,
+    totalItems,
+    msUntilExpiry,
+    daysLeft,
+  } = useCart();
+  const [, setTick] = useState(0);
 
-  const shipping = subtotal >= 500 || subtotal === 0 ? 0 : 25;
-  const tax = subtotal * 0.08;
-  const total = subtotal + shipping + tax;
+  // Refresh countdown labels every 30s
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20 text-center">
         <ShoppingBag className="mx-auto mb-4 h-12 w-12 text-[var(--muted)]" />
-        <h1 className="mb-2 text-2xl font-bold text-white">Your cart is empty</h1>
-        <p className="mb-6 text-[var(--muted)]">
-          Browse the catalog and add hardware to get started.
+        <h1 className="mb-2 text-2xl font-bold text-[var(--heading)]">
+          Your cart is empty
+        </h1>
+        <p className="mb-2 text-sm text-[var(--muted)]">
+          Items stay in your cart for up to 7 days.
         </p>
-        <Link
-          href="/catalog"
-          className="btn-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm"
-        >
-          Browse Catalog <ArrowRight className="h-4 w-4" />
+        <Link href="/catalog" className="btn-primary inline-flex px-6 py-3 text-sm">
+          Browse catalog
         </Link>
       </div>
     );
   }
 
+  const shipping = subtotal >= 500 ? 0 : 25;
+  const tax = subtotal * 0.08;
+  const total = subtotal + shipping + tax;
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-white">Shopping Cart</h1>
-          <p className="text-sm text-[var(--muted)]">{totalItems} item(s)</p>
+          <h1 className="text-3xl font-bold text-[var(--heading)]">Cart</h1>
+          <p className="text-sm text-[var(--muted)]">
+            {totalItems} item{totalItems === 1 ? "" : "s"} · expires 7 days after
+            add
+          </p>
         </div>
         <button
           onClick={clearCart}
-          className="text-sm text-red-400 hover:underline"
+          className="text-sm text-[var(--muted)] hover:text-red-400"
         >
           Clear cart
         </button>
@@ -47,98 +65,100 @@ export default function CartPage() {
 
       <div className="grid gap-8 lg:grid-cols-5">
         <div className="space-y-4 lg:col-span-3">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center"
-            >
-              <Link
-                href={`/product/${item.slug}`}
-                className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 text-3xl"
+          {items.map((item) => {
+            const ms = msUntilExpiry(item);
+            const days = daysLeft(item);
+            const urgent = days <= 2;
+            return (
+              <div
+                key={item.id}
+                className="card flex flex-wrap items-center gap-4 p-4"
               >
-                {item.emoji}
-              </Link>
-              <div className="min-w-0 flex-1">
-                <Link
-                  href={`/product/${item.slug}`}
-                  className="font-semibold text-white hover:text-cyan-400"
-                >
-                  {item.name}
-                </Link>
-                <p className="text-sm text-cyan-400">
-                  ${item.price.toLocaleString()} each
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center rounded-lg border border-[var(--border)]">
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--surface)] text-3xl">
+                  {item.emoji}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/product/${item.slug}`}
+                    className="font-semibold text-[var(--heading)] hover:text-cyan-400"
+                  >
+                    {item.name}
+                  </Link>
+                  <p className="text-sm text-cyan-400">
+                    ${item.price.toLocaleString()}
+                  </p>
+                  <p
+                    className={`mt-1 inline-flex items-center gap-1 text-xs font-medium ${
+                      urgent ? "text-amber-400" : "text-[var(--muted)]"
+                    }`}
+                  >
+                    <Clock className="h-3 w-3" />
+                    {formatCountdown(ms)}
+                    {urgent && " · checkout soon"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => updateQty(item.id, item.quantity - 1)}
-                    className="px-2.5 py-1.5 text-white hover:bg-white/5"
+                    className="rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted)] hover:text-[var(--heading)]"
                   >
-                    −
+                    <Minus className="h-4 w-4" />
                   </button>
-                  <span className="w-8 text-center text-sm text-white">
+                  <span className="w-8 text-center text-sm font-medium text-[var(--heading)]">
                     {item.quantity}
                   </span>
                   <button
                     onClick={() => updateQty(item.id, item.quantity + 1)}
-                    className="px-2.5 py-1.5 text-white hover:bg-white/5"
+                    className="rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted)] hover:text-[var(--heading)]"
                   >
-                    +
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => removeItem(item.id)}
+                    className="ml-2 rounded-lg p-1.5 text-red-400 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="w-20 text-right font-semibold text-white">
-                  ${(item.price * item.quantity).toLocaleString()}
-                </p>
-                <button
-                  onClick={() => removeItem(item.id)}
-                  className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                  title="Remove"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="lg:col-span-2">
           <div className="card sticky top-24 p-6">
-            <h2 className="mb-4 font-semibold text-white">Order Summary</h2>
-            <div className="mb-4 space-y-2 text-sm">
-              <div className="flex justify-between text-[var(--muted)]">
+            <h2 className="mb-4 font-semibold text-[var(--heading)]">Summary</h2>
+            <div className="mb-4 space-y-2 text-sm text-[var(--muted)]">
+              <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                <span>${subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-[var(--muted)]">
+              <div className="flex justify-between">
                 <span>Shipping</span>
                 <span className={shipping === 0 ? "text-cyan-400" : ""}>
                   {shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}
                 </span>
               </div>
-              <div className="flex justify-between text-[var(--muted)]">
-                <span>Tax (8%)</span>
+              <div className="flex justify-between">
+                <span>Tax (est.)</span>
                 <span>${tax.toFixed(2)}</span>
               </div>
             </div>
-            <div className="mb-5 flex items-center justify-between border-t border-[var(--border)] pt-4">
-              <p className="text-sm text-[var(--muted)]">Total</p>
-              <p className="text-2xl font-bold text-cyan-400">
+            <div className="mb-5 flex justify-between border-t border-[var(--border)] pt-4">
+              <span className="text-[var(--muted)]">Total</span>
+              <span className="text-xl font-bold text-cyan-400">
                 ${total.toFixed(2)}
-              </p>
+              </span>
             </div>
             <Link
               href="/checkout"
-              className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm"
+              className="btn-primary flex w-full items-center justify-center py-3 text-sm"
             >
-              Proceed to Checkout <ArrowRight className="h-4 w-4" />
+              Checkout
             </Link>
-            <Link
-              href="/catalog"
-              className="mt-3 block text-center text-sm text-cyan-400 hover:underline"
-            >
-              Continue shopping
-            </Link>
+            <p className="mt-3 text-center text-xs text-[var(--muted)]">
+              Signed-in users get an email when 1–2 days remain
+            </p>
           </div>
         </div>
       </div>
