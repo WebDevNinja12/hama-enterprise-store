@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import PasswordInput from "@/components/PasswordInput";
 
+function formatSeconds(total: number) {
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function ResetForm() {
   const router = useRouter();
   const search = useSearchParams();
@@ -18,7 +24,6 @@ function ResetForm() {
   const [loading, setLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(90);
 
-  // Client-side hint countdown (server still enforces 90s expiry)
   useEffect(() => {
     const t = setInterval(() => {
       setSecondsLeft((s) => Math.max(0, s - 1));
@@ -69,11 +74,11 @@ function ResetForm() {
         {email ? `Account: ${email}` : "Enter your new password below."}
       </p>
       <p
-        className={`mb-6 text-sm font-semibold ${
+        className={`mb-6 font-mono text-lg font-bold tabular-nums ${
           secondsLeft <= 20 ? "text-red-400" : "text-amber-400"
         }`}
       >
-        Link time remaining: {secondsLeft}s
+        Time left: {formatSeconds(secondsLeft)}
       </p>
 
       {error && (

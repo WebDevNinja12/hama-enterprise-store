@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Package } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Package,
+  AlertTriangle,
+  RefreshCw,
+} from "lucide-react";
 
 type Product = {
   id: string;
@@ -14,6 +21,7 @@ type Product = {
   emoji: string;
   stock: number;
   description: string;
+  published?: boolean;
 };
 
 const emptyForm = {
@@ -27,6 +35,8 @@ const emptyForm = {
   stock: "10",
 };
 
+type Filter = "ALL" | "OUT" | "LOW" | "IN_STOCK";
+
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,15 +44,19 @@ export default function AdminProductsPage() {
   const [success, setSuccess] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState<Filter>("ALL");
+  const [editingStock, setEditingStock] = useState<Record<string, string>>({});
 
   async function load() {
     setLoading(true);
+    setError("");
     try {
-      const res = await fetch("/api/products");
+      const res = await fetch("/api/products?admin=1");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load");
       setProducts(data.products || []);
-    } catch {
-      setError("Failed to load products");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load products");
     } finally {
       setLoading(false);
     }
@@ -51,6 +65,23 @@ export default function AdminProductsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  const counts = useMemo(
+    () => ({
+      ALL: products.length,
+      OUT: products.filter((p) => p.stock <= 0).length,
+      LOW: products.filter((p) => p.stock > 0 && p.stock <= 5).length,
+      IN_STOCK: products.filter((p) => p.stock > 5).length,
+    }),
+    [products]
+  );
+
+  const filtered = useMemo(() => {
+    if (filter === "OUT") return products.filter((p) => p.stock <= 0);
+    if (filter === "LOW") return products.filter((p) => p.stock > 0 && p.stock <= 5);
+    if (filter === "IN_STOCK") return products.filter((p) => p.stock > 5);
+    return products;
+  }, [products, filter]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -96,17 +127,72 @@ export default function AdminProductsPage() {
     }
   }
 
+  async function handleStockSave(id: string) {
+    const raw = editingStock[id];
+    if (raw === undefined) return;
+    const stock = Math.max(0, parseInt(raw, 10) || 0);
+    try {
+      const res = await fetch(`/api/products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, stock } : p))
+      );
+      setEditingStock((s) => {
+        const n = { ...s };
+        delete n[id];
+        return n;
+      });
+      setSuccess("Stock updated");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Stock update failed");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
-      <Link
-        href="/admin"
-        className="mb-2 inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline"
-      >
-        <ArrowLeft className="h-3 w-3" /> Admin
-      </Link>
-      <h1 className="mb-6 text-2xl font-bold text-[var(--heading)]">
-        Products
-      </h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Link
+            href="/admin"
+            className="mb-2 inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline"
+          >
+            <ArrowLeft className="h-3 w-3" /> Admin
+          </Link>
+          <h1 className="text-2xl font-bold text-[var(--heading)]">
+            Product inventory
+          </h1>
+          <p className="text-sm text-[var(--muted)]">
+            All products · out of stock · restock
+          </p>
+        </div>
+        <button
+          onClick={load}
+          className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+        >
+          <RefreshCw className="h-4 w-4" /> Refresh
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <div className="card p-4">
+          <p className="text-2xl font-bold text-[var(--heading)]">{counts.ALL}</p>
+          <p className="text-xs text-[var(--muted)]">All products</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-2xl font-bold text-red-400">{counts.OUT}</p>
+          <p className="text-xs text-[var(--muted)]">Out of stock</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-2xl font-bold text-amber-400">{counts.LOW}</p>
+          <p className="text-xs text-[var(--muted)]">Low stock (≤5)</p>
+        </div>
+      </div>
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -131,7 +217,6 @@ export default function AdminProductsPage() {
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Product name"
             />
           </div>
           <div className="sm:col-span-2">
@@ -143,7 +228,6 @@ export default function AdminProductsPage() {
               required
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Product description"
             />
           </div>
           <div>
@@ -159,15 +243,13 @@ export default function AdminProductsPage() {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">
-              Compare at (optional)
-            </label>
+            <label className="mb-1.5 block text-xs text-[var(--muted)]">Stock</label>
             <input
               type="number"
-              step="0.01"
+              min="0"
               className="input"
-              value={form.compareAt}
-              onChange={(e) => setForm({ ...form, compareAt: e.target.value })}
+              value={form.stock}
+              onChange={(e) => setForm({ ...form, stock: e.target.value })}
             />
           </div>
           <div>
@@ -177,7 +259,6 @@ export default function AdminProductsPage() {
               required
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
-              placeholder="Neural, Audio, ..."
             />
           </div>
           <div>
@@ -186,25 +267,6 @@ export default function AdminProductsPage() {
               className="input"
               value={form.brand}
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">Emoji</label>
-            <input
-              className="input"
-              value={form.emoji}
-              onChange={(e) => setForm({ ...form, emoji: e.target.value })}
-              placeholder="📦"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">Stock</label>
-            <input
-              type="number"
-              min="0"
-              className="input"
-              value={form.stock}
-              onChange={(e) => setForm({ ...form, stock: e.target.value })}
             />
           </div>
           <div className="sm:col-span-2">
@@ -219,49 +281,119 @@ export default function AdminProductsPage() {
         </form>
       </div>
 
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(
+          [
+            ["ALL", "All"],
+            ["OUT", "Out of stock"],
+            ["LOW", "Low stock"],
+            ["IN_STOCK", "In stock"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+              filter === key
+                ? "bg-cyan-500 text-black"
+                : "border border-[var(--border)] text-[var(--muted)]"
+            }`}
+          >
+            {label} ({counts[key]})
+          </button>
+        ))}
+      </div>
+
       <h2 className="mb-4 font-semibold text-[var(--heading)]">
-        Catalog products ({products.length})
+        {filter === "OUT"
+          ? "Out of stock products"
+          : filter === "LOW"
+            ? "Low stock products"
+            : "All products"}{" "}
+        ({filtered.length})
       </h2>
+
       {loading ? (
         <p className="text-[var(--muted)]">Loading...</p>
-      ) : products.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="card p-8 text-center">
           <Package className="mx-auto mb-2 h-8 w-8 text-[var(--muted)]" />
-          <p className="text-sm text-[var(--muted)]">
-            No admin-added products yet. Seed catalog items still show on the
-            store.
-          </p>
+          <p className="text-sm text-[var(--muted)]">No products in this filter</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {products.map((p) => (
-            <div
-              key={p.id}
-              className="card flex flex-wrap items-center justify-between gap-3 p-4"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{p.emoji}</span>
-                <div>
-                  <p className="font-medium text-[var(--heading)]">{p.name}</p>
-                  <p className="text-xs text-[var(--muted)]">
-                    {p.category} · {p.brand} · stock {p.stock}
+          {filtered.map((p) => {
+            const out = p.stock <= 0;
+            const low = p.stock > 0 && p.stock <= 5;
+            return (
+              <div
+                key={p.id}
+                className={`card flex flex-wrap items-center justify-between gap-3 p-4 ${
+                  out ? "border-red-500/40" : low ? "border-amber-500/30" : ""
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{p.emoji}</span>
+                  <div>
+                    <p className="font-medium text-[var(--heading)]">{p.name}</p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {p.category} · {p.brand}
+                    </p>
+                    {out && (
+                      <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-red-400">
+                        <AlertTriangle className="h-3 w-3" /> OUT OF STOCK
+                      </p>
+                    )}
+                    {low && (
+                      <p className="mt-1 text-xs font-semibold text-amber-400">
+                        Low stock
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-[var(--muted)]">Stock</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="input h-9 w-20 py-1 text-sm"
+                      value={
+                        editingStock[p.id] !== undefined
+                          ? editingStock[p.id]
+                          : String(p.stock)
+                      }
+                      onChange={(e) =>
+                        setEditingStock((s) => ({
+                          ...s,
+                          [p.id]: e.target.value,
+                        }))
+                      }
+                    />
+                    {editingStock[p.id] !== undefined && (
+                      <button
+                        onClick={() => handleStockSave(p.id)}
+                        className="btn-primary px-3 py-1.5 text-xs"
+                      >
+                        Save
+                      </button>
+                    )}
+                  </div>
+                  <p className="font-semibold text-cyan-400">
+                    ${Number(p.price).toLocaleString()}
                   </p>
+                  <button
+                    onClick={() => handleDelete(p.id, p.name)}
+                    className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <p className="font-semibold text-cyan-400">
-                  ${Number(p.price).toLocaleString()}
-                </p>
-                <button
-                  onClick={() => handleDelete(p.id, p.name)}
-                  className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                  title="Delete"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -18,9 +18,9 @@ export default function CartPage() {
   } = useCart();
   const [, setTick] = useState(0);
 
-  // Refresh countdown labels every 30s
+  // Live countdown — refresh every 1 second
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 30_000);
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -51,8 +51,8 @@ export default function CartPage() {
         <div>
           <h1 className="text-3xl font-bold text-[var(--heading)]">Cart</h1>
           <p className="text-sm text-[var(--muted)]">
-            {totalItems} item{totalItems === 1 ? "" : "s"} · expires 7 days after
-            add
+            {totalItems} item{totalItems === 1 ? "" : "s"} · each item expires 7
+            days after add (live countdown)
           </p>
         </div>
         <button
@@ -88,13 +88,17 @@ export default function CartPage() {
                     ${item.price.toLocaleString()}
                   </p>
                   <p
-                    className={`mt-1 inline-flex items-center gap-1 text-xs font-medium ${
-                      urgent ? "text-amber-400" : "text-[var(--muted)]"
+                    className={`mt-1 inline-flex items-center gap-1.5 font-mono text-xs font-semibold tabular-nums ${
+                      urgent ? "text-amber-400" : "text-cyan-400"
                     }`}
                   >
-                    <Clock className="h-3 w-3" />
+                    <Clock className="h-3.5 w-3.5 shrink-0" />
                     {formatCountdown(ms)}
-                    {urgent && " · checkout soon"}
+                    {urgent && (
+                      <span className="font-sans font-medium">
+                        · checkout soon
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -156,9 +160,6 @@ export default function CartPage() {
             >
               Checkout
             </Link>
-            <p className="mt-3 text-center text-xs text-[var(--muted)]">
-              Signed-in users get an email when 1–2 days remain
-            </p>
           </div>
         </div>
       </div>

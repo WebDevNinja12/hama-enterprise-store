@@ -243,14 +243,18 @@ export function useCart() {
   return ctx;
 }
 
+/** Live countdown string — updates when parent re-renders every second */
 export function formatCountdown(ms: number): string {
   if (ms <= 0) return "Expired";
   const totalSec = Math.floor(ms / 1000);
   const days = Math.floor(totalSec / 86400);
   const hours = Math.floor((totalSec % 86400) / 3600);
   const mins = Math.floor((totalSec % 3600) / 60);
-  if (days > 2) return `${days}d left`;
-  if (days >= 1) return `${days}d ${hours}h left`;
-  if (hours >= 1) return `${hours}h ${mins}m left`;
-  return `${mins}m left`;
+  const secs = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  if (days > 0) return `${days}d ${pad(hours)}h ${pad(mins)}m ${pad(secs)}s`;
+  if (hours > 0) return `${hours}h ${pad(mins)}m ${pad(secs)}s`;
+  if (mins > 0) return `${mins}m ${pad(secs)}s`;
+  return `${secs}s`;
 }

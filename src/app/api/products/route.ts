@@ -25,35 +25,66 @@ const productSchema = z.object({
   slug: z.string().optional(),
 });
 
-/** Public: list published products */
-export async function GET() {
+function mapProduct(p: {
+  id: string;
+  name: string;
+  slug: string;
+  price: { toString(): string } | number;
+  compareAt: { toString(): string } | number | null;
+  category: string;
+  brand: string;
+  emoji: string;
+  stock: number;
+  rating: number;
+  description: string;
+  published: boolean;
+}) {
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    price: Number(p.price),
+    compareAt: p.compareAt != null ? Number(p.compareAt) : undefined,
+    category: p.category,
+    brand: p.brand,
+    emoji: p.emoji,
+    stock: p.stock,
+    rating: p.rating,
+    description: p.description,
+    published: p.published,
+  };
+}
+
+/** Public: published only. Admin: ?admin=1 returns all products */
+export async function GET(req: NextRequest) {
   try {
+    const adminFlag = req.nextUrl.searchParams.get("admin") === "1";
+    let isAdmin = false;
+
+    if (adminFlag) {
+      const session = await auth();
+      isAdmin = session?.user?.role === "ADMIN";
+      if (!isAdmin) {
+        return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      }
+    }
+
     const products = await prisma.storeProduct.findMany({
-      where: { published: true },
+      where: isAdmin ? undefined : { published: true },
       orderBy: { createdAt: "desc" },
     });
+
     return NextResponse.json({
-      products: products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        price: Number(p.price),
-        compareAt: p.compareAt ? Number(p.compareAt) : undefined,
-        category: p.category,
-        brand: p.brand,
-        emoji: p.emoji,
-        stock: p.stock,
-        rating: p.rating,
-        description: p.description,
-      })),
+      products: products.map(mapProduct),
+      outOfStock: products.filter((p) => p.stock <= 0).length,
+      lowStock: products.filter((p) => p.stock > 0 && p.stock <= 5).length,
     });
   } catch (err) {
     console.error("List products error:", err);
-    return NextResponse.json({ products: [] });
+    return NextResponse.json({ products: [], outOfStock: 0, lowStock: 0 });
   }
 }
 
-/** Admin: create product */
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
@@ -88,12 +119,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      product: {
-        id: product.id,
-        name: product.name,
-        slug: product.slug,
-        price: Number(product.price),
-      },
+      product: mapProduct(product),
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
