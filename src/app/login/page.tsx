@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
 import PasswordInput from "@/components/PasswordInput";
 
 function LoginForm() {
@@ -26,7 +25,10 @@ function LoginForm() {
       redirect: false,
     });
     if (res?.error) {
-      setError("Invalid email or password");
+      // NextAuth may surface CredentialsSignin for EMAIL_NOT_VERIFIED too
+      setError(
+        "Invalid email/password, or email not verified. Check your inbox for the OTP and finish registration."
+      );
       setLoading(false);
     } else {
       router.push(callbackUrl);

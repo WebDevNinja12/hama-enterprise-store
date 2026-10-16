@@ -38,10 +38,14 @@ const providers: Provider[] = [
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user || !user.password) return null;
 
+      // Require email verification for normal users (admins always allowed)
+      if (!user.emailVerified && user.role !== "ADMIN") {
+        throw new Error("EMAIL_NOT_VERIFIED");
+      }
+
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) return null;
 
-      // Touch last activity
       await prisma.user.update({
         where: { id: user.id },
         data: { lastActiveAt: new Date() },
@@ -79,14 +83,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = (user as { role?: Role }).role ?? "USER";
       }
       if (token.id) {
-        // Keep activity fresh (throttled by session usage)
         try {
           await prisma.user.update({
             where: { id: token.id as string },
             data: { lastActiveAt: new Date() },
           });
         } catch {
-          /* user may have been deleted */
+          /* ignore */
         }
       }
       return token;

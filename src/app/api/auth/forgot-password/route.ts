@@ -10,6 +10,9 @@ const schema = z.object({
 
 const RESET_TTL_MS = 90_000; // 90 seconds
 
+/**
+ * Password reset email is ALWAYS sent to the user's own email address — never admin.
+ */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -18,12 +21,11 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findUnique({ where: { email } });
 
-    // Same generic message when user missing (privacy)
     if (!user || !user.password) {
       return NextResponse.json({
         ok: true,
         message:
-          "If an account exists for that email, a verification link was sent. It expires in 90 seconds.",
+          "If an account exists for that email, a reset link was sent to that address only. It expires in 90 seconds.",
       });
     }
 
@@ -48,6 +50,7 @@ export async function POST(req: Request) {
       "https://hama-enterprise-store.vercel.app";
     const resetUrl = `${base.replace(/\/$/, "")}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
+    // Send ONLY to the user who requested the reset
     const sent = await sendEmail({
       to: email,
       subject: "Reset your HAMA ENTERPRISE NG password (90s)",
@@ -56,7 +59,6 @@ export async function POST(req: Request) {
     });
 
     if (!sent.ok) {
-      // Clean token if email failed
       await prisma.verificationToken.deleteMany({ where: { token } });
       return NextResponse.json(
         {
@@ -70,8 +72,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      message:
-        "Verification email sent. Open the link within 90 seconds to reset your password.",
+      message: `Reset link sent to ${email}. Open it within 90 seconds.`,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
