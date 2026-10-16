@@ -5,9 +5,10 @@ export async function sendEmail(opts: {
   text?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
+  // Must use a verified domain. Free tier: onboarding@resend.dev works.
+  // Custom domains (e.g. *.resend.app) must be verified in Resend dashboard first.
   const from =
-    process.env.EMAIL_FROM ||
-    "HAMA ENTERPRISE NG <noreply@ilkouzyon.resend.app>";
+    process.env.EMAIL_FROM || "HAMA ENTERPRISE NG <onboarding@resend.dev>";
 
   if (!apiKey) {
     console.warn(
@@ -42,7 +43,14 @@ export async function sendEmail(opts: {
     if (!res.ok) {
       const body = await res.text();
       console.error("[email] Resend error:", res.status, body);
-      return { ok: false, error: "Failed to send email" };
+      let message = "Failed to send email";
+      try {
+        const j = JSON.parse(body) as { message?: string };
+        if (j.message) message = j.message;
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, error: message };
     }
 
     return { ok: true };
