@@ -2,10 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShoppingCart, User, Search, Menu, X } from "lucide-react";
+import {
+  ShoppingCart,
+  User,
+  Search,
+  Menu,
+  X,
+  Sun,
+  Moon,
+} from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/CartContext";
+import { useTheme } from "@/context/ThemeContext";
 
 const navLinks = [
   { href: "/", label: "Store" },
@@ -18,15 +27,16 @@ export default function Header() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { totalItems } = useCart();
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--background)]/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/20 text-sm font-bold text-cyan-400">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/20 text-sm font-bold text-cyan-500">
             H
           </div>
-          <span className="hidden text-sm font-bold tracking-wide text-white sm:block">
+          <span className="hidden text-sm font-bold tracking-wide text-[var(--heading)] sm:block">
             HAMA ENTERPRISE NG
           </span>
         </Link>
@@ -48,8 +58,8 @@ export default function Header() {
               className={cn(
                 "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 pathname === link.href
-                  ? "bg-cyan-500/15 text-cyan-400"
-                  : "text-[var(--muted)] hover:text-white"
+                  ? "bg-cyan-500/15 text-cyan-500"
+                  : "text-[var(--muted)] hover:text-[var(--heading)]"
               )}
             >
               {link.label}
@@ -57,10 +67,24 @@ export default function Header() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="rounded-lg p-2 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
+          </button>
+
           <Link
             href="/cart"
-            className="relative rounded-lg p-2 text-[var(--muted)] transition hover:bg-white/5 hover:text-white"
+            className="relative rounded-lg p-2 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
           >
             <ShoppingCart className="h-5 w-5" />
             {totalItems > 0 && (
@@ -69,12 +93,14 @@ export default function Header() {
               </span>
             )}
           </Link>
+
           <Link
             href="/login"
-            className="rounded-lg p-2 text-[var(--muted)] transition hover:bg-white/5 hover:text-white"
+            className="rounded-lg p-2 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
           >
             <User className="h-5 w-5" />
           </Link>
+
           <button
             className="rounded-lg p-2 text-[var(--muted)] md:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -95,13 +121,31 @@ export default function Header() {
                 className={cn(
                   "rounded-lg px-3 py-2.5 text-sm font-medium",
                   pathname === link.href
-                    ? "bg-cyan-500/15 text-cyan-400"
+                    ? "bg-cyan-500/15 text-cyan-500"
                     : "text-[var(--muted)]"
                 )}
               >
                 {link.label}
               </Link>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                toggleTheme();
+                setMobileOpen(false);
+              }}
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-[var(--muted)]"
+            >
+              {theme === "dark" ? (
+                <>
+                  <Sun className="h-4 w-4" /> Light mode
+                </>
+              ) : (
+                <>
+                  <Moon className="h-4 w-4" /> Dark mode
+                </>
+              )}
+            </button>
           </nav>
         </div>
       )}
