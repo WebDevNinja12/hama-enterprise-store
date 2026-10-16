@@ -44,17 +44,22 @@ export default function Footer() {
 
           <div>
             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[var(--heading)]">
-              Company
+              Account
             </p>
             <ul className="space-y-2 text-sm text-[var(--muted)]">
               <li>
                 <Link href="/login" className="hover:text-cyan-400">
-                  Account
+                  Sign in
                 </Link>
               </li>
               <li>
-                <Link href="/admin" className="hover:text-cyan-400">
-                  Admin
+                <Link href="/register" className="hover:text-cyan-400">
+                  Create account
+                </Link>
+              </li>
+              <li>
+                <Link href="/account" className="hover:text-cyan-400">
+                  My account
                 </Link>
               </li>
             </ul>
@@ -66,7 +71,10 @@ export default function Footer() {
             </p>
             <ul className="space-y-2 text-sm text-[var(--muted)]">
               <li>
-                <a href="mailto:support@hamaenterprise.ng" className="hover:text-cyan-400">
+                <a
+                  href="mailto:support@hamaenterprise.ng"
+                  className="hover:text-cyan-400"
+                >
                   Contact
                 </a>
               </li>

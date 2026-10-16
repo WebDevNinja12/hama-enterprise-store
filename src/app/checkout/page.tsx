@@ -59,7 +59,9 @@ export default function CheckoutPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-20 text-center">
         <CheckCircle className="mx-auto mb-4 h-16 w-16 text-cyan-400" />
-        <h1 className="mb-2 text-2xl font-bold text-white">Order confirmed</h1>
+        <h1 className="mb-2 text-2xl font-bold text-[var(--heading)]">
+          Order confirmed
+        </h1>
         <p className="mb-2 text-[var(--muted)]">
           Order number:{" "}
           <span className="font-mono font-semibold text-cyan-400">
@@ -80,13 +82,13 @@ export default function CheckoutPage() {
             href="/catalog"
             className="btn-primary inline-flex rounded-xl px-6 py-3 text-sm"
           >
-            Continue Shopping
+            Continue shopping
           </Link>
           <Link
-            href="/admin/orders"
+            href="/account"
             className="btn-secondary inline-flex rounded-xl px-6 py-3 text-sm"
           >
-            View Orders (Admin)
+            View my orders
           </Link>
         </div>
       </div>
@@ -96,7 +98,9 @@ export default function CheckoutPage() {
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20 text-center">
-        <h1 className="mb-2 text-2xl font-bold text-white">Nothing to checkout</h1>
+        <h1 className="mb-2 text-2xl font-bold text-[var(--heading)]">
+          Nothing to checkout
+        </h1>
         <p className="mb-6 text-[var(--muted)]">Add items to your cart first.</p>
         <Link href="/catalog" className="text-cyan-400 hover:underline">
           Go to Catalog
@@ -137,9 +141,7 @@ export default function CheckoutPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to place order");
-      }
+      if (!res.ok) throw new Error(data.error || "Failed to place order");
 
       clearCart();
       setOrderResult({
@@ -182,7 +184,9 @@ export default function CheckoutPage() {
         <span className="font-medium text-cyan-400">SECURE TRANSMISSION</span>
         <span>· SSL 256-BIT ENCRYPTION</span>
       </div>
-      <h1 className="mb-8 text-3xl font-bold text-white">Checkout & Verification</h1>
+      <h1 className="mb-8 text-3xl font-bold text-[var(--heading)]">
+        Checkout & Verification
+      </h1>
 
       {error && (
         <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -196,7 +200,9 @@ export default function CheckoutPage() {
             <div className="card p-6">
               <div className="mb-4 flex items-center gap-2">
                 <Truck className="h-5 w-5 text-cyan-400" />
-                <h2 className="font-semibold text-white">Contact & Shipping</h2>
+                <h2 className="font-semibold text-[var(--heading)]">
+                  Contact & Shipping
+                </h2>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -292,7 +298,9 @@ export default function CheckoutPage() {
             <div className="card p-6">
               <div className="mb-4 flex items-center gap-2">
                 <CreditCard className="h-5 w-5 text-cyan-400" />
-                <h2 className="font-semibold text-white">Payment Method</h2>
+                <h2 className="font-semibold text-[var(--heading)]">
+                  Payment Method
+                </h2>
               </div>
               <div className="mb-5 flex flex-wrap gap-2 sm:gap-3">
                 {methodBtn("card", "Credit Card", <CreditCard className="h-4 w-4" />)}
@@ -327,10 +335,6 @@ export default function CheckoutPage() {
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-[var(--muted)]">
-                    Order is saved to the database. Stripe live charging can be
-                    connected later.
-                  </p>
                 </div>
               )}
 
@@ -339,18 +343,21 @@ export default function CheckoutPage() {
                   <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-5">
                     <p className="mb-3 text-sm font-medium text-cyan-400">
                       Transfer exactly{" "}
-                      <span className="text-white">${total.toFixed(2)}</span> to:
+                      <span className="text-[var(--heading)]">
+                        ${total.toFixed(2)}
+                      </span>{" "}
+                      to:
                     </p>
                     <dl className="space-y-2 text-sm">
                       <div className="flex justify-between gap-4">
                         <dt className="text-[var(--muted)]">Bank</dt>
-                        <dd className="font-medium text-white">
+                        <dd className="font-medium text-[var(--heading)]">
                           {BANK_DETAILS.bankName}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-4">
                         <dt className="text-[var(--muted)]">Account Name</dt>
-                        <dd className="font-medium text-white">
+                        <dd className="font-medium text-[var(--heading)]">
                           {BANK_DETAILS.accountName}
                         </dd>
                       </div>
@@ -372,12 +379,6 @@ export default function CheckoutPage() {
                           )}
                         </dd>
                       </div>
-                      <div className="flex justify-between gap-4">
-                        <dt className="text-[var(--muted)]">Sort Code</dt>
-                        <dd className="font-medium text-white">
-                          {BANK_DETAILS.sortCode}
-                        </dd>
-                      </div>
                     </dl>
                   </div>
                   <div>
@@ -390,7 +391,6 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setForm({ ...form, transferRef: e.target.value })
                       }
-                      placeholder="Your name or bank narration"
                     />
                   </div>
                 </div>
@@ -404,9 +404,6 @@ export default function CheckoutPage() {
                   <div className="mx-auto mb-3 flex h-40 w-40 items-center justify-center rounded-xl bg-white text-4xl">
                     ▦
                   </div>
-                  <p className="text-xs text-cyan-400">
-                    Supports BTC, ETH, USDT · order saved to database
-                  </p>
                 </div>
               )}
             </div>
@@ -414,7 +411,7 @@ export default function CheckoutPage() {
 
           <div className="lg:col-span-2">
             <div className="card sticky top-24 p-6">
-              <h2 className="mb-4 font-semibold text-white">
+              <h2 className="mb-4 font-semibold text-[var(--heading)]">
                 Order Summary ({totalItems})
               </h2>
               <ul className="mb-4 max-h-48 space-y-2 overflow-y-auto text-sm">
@@ -426,7 +423,7 @@ export default function CheckoutPage() {
                     <span className="truncate">
                       {item.emoji} {item.name} × {item.quantity}
                     </span>
-                    <span className="shrink-0 text-white">
+                    <span className="shrink-0 text-[var(--heading)]">
                       ${(item.price * item.quantity).toLocaleString()}
                     </span>
                   </li>
@@ -460,14 +457,11 @@ export default function CheckoutPage() {
                 className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm disabled:opacity-50"
               >
                 {placing
-                  ? "Saving order..."
+                  ? "Placing order..."
                   : paymentMethod === "bank"
                     ? "I Have Transferred — Place Order"
-                    : "⚡ Place Real Order"}
+                    : "Place order"}
               </button>
-              <p className="mt-3 text-center text-xs text-[var(--muted)]">
-                Orders are saved to your database
-              </p>
             </div>
           </div>
         </div>

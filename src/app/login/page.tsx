@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import PasswordInput from "@/components/PasswordInput";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,16 +59,19 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">
-              Password
-            </label>
-            <input
-              type="password"
-              className="input"
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-xs text-[var(--muted)]">Password</label>
+              <Link
+                href="/forgot-password"
+                className="text-xs text-cyan-400 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               required
-              placeholder="••••••••"
               autoComplete="current-password"
             />
           </div>

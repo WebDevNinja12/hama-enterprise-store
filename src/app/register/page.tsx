@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import PasswordInput from "@/components/PasswordInput";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -31,7 +32,6 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
 
-      // Auto sign-in after successful registration
       const login = await signIn("credentials", {
         email: email.trim().toLowerCase(),
         password,
@@ -58,7 +58,7 @@ export default function RegisterPage() {
           Create account
         </h1>
         <p className="mb-6 text-sm text-[var(--muted)]">
-          Join HAMA ENTERPRISE NG — your orders and activity stay private to you
+          Join HAMA ENTERPRISE NG — your orders stay private to you
         </p>
 
         {error && (
@@ -95,11 +95,9 @@ export default function RegisterPage() {
             <label className="mb-1.5 block text-xs text-[var(--muted)]">
               Password
             </label>
-            <input
-              type="password"
-              className="input"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               required
               minLength={8}
               placeholder="Min 8 characters"
