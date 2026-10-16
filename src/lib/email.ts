@@ -6,7 +6,8 @@ export async function sendEmail(opts: {
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   const from =
-    process.env.EMAIL_FROM || "HAMA ENTERPRISE NG <onboarding@resend.dev>";
+    process.env.EMAIL_FROM ||
+    "HAMA ENTERPRISE NG <noreply@ilkouzyon.resend.app>";
 
   if (!apiKey) {
     console.warn(
