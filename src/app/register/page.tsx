@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,11 +22,29 @@ export default function RegisterPage() {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
-      router.push("/login");
+
+      // Auto sign-in after successful registration
+      const login = await signIn("credentials", {
+        email: email.trim().toLowerCase(),
+        password,
+        redirect: false,
+      });
+
+      if (login?.error) {
+        router.push("/login");
+        return;
+      }
+
+      router.push("/account");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       setLoading(false);
@@ -35,8 +54,12 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4 py-16">
       <div className="card w-full max-w-md p-8">
-        <h1 className="mb-1 text-2xl font-bold text-white">Create account</h1>
-        <p className="mb-6 text-sm text-[var(--muted)]">Join HAMA ENTERPRISE NG</p>
+        <h1 className="mb-1 text-2xl font-bold text-[var(--heading)]">
+          Create account
+        </h1>
+        <p className="mb-6 text-sm text-[var(--muted)]">
+          Join HAMA ENTERPRISE NG — your orders and activity stay private to you
+        </p>
 
         {error && (
           <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -52,7 +75,8 @@ export default function RegisterPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              placeholder="Your name"
+              minLength={2}
+              placeholder="Your full name"
             />
           </div>
           <div>
@@ -64,10 +88,13 @@ export default function RegisterPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@example.com"
+              autoComplete="email"
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">Password</label>
+            <label className="mb-1.5 block text-xs text-[var(--muted)]">
+              Password
+            </label>
             <input
               type="password"
               className="input"
@@ -76,14 +103,15 @@ export default function RegisterPage() {
               required
               minLength={8}
               placeholder="Min 8 characters"
+              autoComplete="new-password"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full rounded-lg py-3 text-sm disabled:opacity-50"
+            className="btn-primary w-full py-3 text-sm disabled:opacity-50"
           >
-            {loading ? "Creating..." : "Create Account"}
+            {loading ? "Creating account..." : "Create Account"}
           </button>
         </form>
 

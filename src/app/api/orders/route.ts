@@ -47,17 +47,17 @@ export async function POST(req: NextRequest) {
 
     const session = await auth();
     let userId: string | undefined = session?.user?.id;
+    const email = data.email.toLowerCase().trim();
 
     if (!userId) {
-      const existing = await prisma.user.findUnique({
-        where: { email: data.email.toLowerCase() },
-      });
+      const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) {
         userId = existing.id;
       } else {
+        // Guest checkout: create account without password (can set later)
         const guest = await prisma.user.create({
           data: {
-            email: data.email.toLowerCase(),
+            email,
             name: `${data.firstName} ${data.lastName}`.trim(),
           },
         });
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       data: {
         orderNumber,
         userId,
-        customerEmail: data.email.toLowerCase(),
+        customerEmail: email,
         customerPhone: data.phone || null,
         status: data.paymentMethod === "bank" ? "PENDING" : "PROCESSING",
         subtotal,
@@ -117,30 +117,44 @@ export async function POST(req: NextRequest) {
       );
     }
     console.error("Create order error:", err);
-    const message =
-      err instanceof Error && err.message.includes("DATABASE_URL")
-        ? "Database not configured. Set DATABASE_URL on Vercel."
-        : "Failed to create order. Check database connection.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create order. Check database connection." },
+      { status: 500 }
+    );
   }
 }
 
-/** List orders — all orders for store ops (lock down with auth later) */
+/**
+ * List orders:
+ * - ADMIN → all orders
+ * - Logged-in USER → only their orders
+ * - Not logged in → 401
+ */
 export async function GET() {
   try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Please sign in to view orders" },
+        { status: 401 }
+      );
+    }
+
+    const isAdmin = session.user.role === "ADMIN";
+
     const orders = await prisma.order.findMany({
+      where: isAdmin ? undefined : { userId: session.user.id },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: { items: true },
     });
-    return NextResponse.json({ orders });
+
+    return NextResponse.json({ orders, isAdmin });
   } catch (err) {
     console.error("List orders error:", err);
     return NextResponse.json(
-      {
-        error:
-          "Failed to load orders. Set DATABASE_URL and run: npx prisma db push",
-      },
+      { error: "Failed to load orders" },
       { status: 500 }
     );
   }

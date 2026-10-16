@@ -31,15 +31,16 @@ const providers: Provider[] = [
     },
     async authorize(credentials) {
       if (!credentials?.email || !credentials?.password) return null;
-      const user = await prisma.user.findUnique({
-        where: { email: credentials.email as string },
-      });
+
+      const email = String(credentials.email).toLowerCase().trim();
+      const password = String(credentials.password);
+
+      const user = await prisma.user.findUnique({ where: { email } });
       if (!user || !user.password) return null;
-      const valid = await bcrypt.compare(
-        credentials.password as string,
-        user.password
-      );
+
+      const valid = await bcrypt.compare(password, user.password);
       if (!valid) return null;
+
       return {
         id: user.id,
         email: user.email,
@@ -69,14 +70,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as { role?: Role }).role;
+        token.role = (user as { role?: Role }).role ?? "USER";
+      }
+      // Refresh role from DB occasionally is optional; keep token values
+      if (!token.role && token.id) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { role: true },
+          });
+          if (dbUser) token.role = dbUser.role;
+        } catch {
+          /* ignore */
+        }
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as Role;
+        session.user.id = (token.id as string) || "";
+        session.user.role = (token.role as Role) || "USER";
       }
       return session;
     },

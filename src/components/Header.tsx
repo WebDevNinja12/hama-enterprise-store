@@ -12,6 +12,7 @@ import {
   Moon,
 } from "lucide-react";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/CartContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -28,6 +29,7 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { totalItems } = useCart();
   const { theme, toggleTheme } = useTheme();
+  const { data: session } = useSession();
 
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-2xl">
@@ -75,7 +77,11 @@ export default function Header() {
             title={theme === "dark" ? "Light mode" : "Dark mode"}
             aria-label="Toggle theme"
           >
-            {theme === "dark" ? <Sun className="h-4.5 w-4.5 h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+            {theme === "dark" ? (
+              <Sun className="h-[18px] w-[18px]" />
+            ) : (
+              <Moon className="h-[18px] w-[18px]" />
+            )}
           </button>
 
           <Link
@@ -91,8 +97,9 @@ export default function Header() {
           </Link>
 
           <Link
-            href="/login"
+            href={session ? "/account" : "/login"}
             className="rounded-full p-2.5 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
+            title={session ? "My account" : "Sign in"}
           >
             <User className="h-[18px] w-[18px]" />
           </Link>
@@ -124,6 +131,13 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
+            <Link
+              href={session ? "/account" : "/login"}
+              onClick={() => setMobileOpen(false)}
+              className="rounded-xl px-3 py-2.5 text-sm text-[var(--muted)]"
+            >
+              {session ? "My account" : "Sign in"}
+            </Link>
             <button
               type="button"
               onClick={() => {
