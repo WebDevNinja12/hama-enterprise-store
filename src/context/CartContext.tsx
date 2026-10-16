@@ -10,8 +10,8 @@ import {
 } from "react";
 import type { Product } from "@/lib/products";
 
-const CART_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const REMINDER_WINDOW_MS = 2 * 24 * 60 * 60 * 1000; // last 2 days
+const CART_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const REMINDER_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 
 export type CartItem = {
   id: string;
@@ -20,17 +20,20 @@ export type CartItem = {
   price: number;
   emoji: string;
   quantity: number;
-  /** When item was first added (ms since epoch) */
+  stock: number;
   addedAt: number;
-  /** Last time a reminder email was sent for this line */
   remindedAt?: number;
 };
 
+export type AddResult =
+  | { ok: true; atMax?: boolean }
+  | { ok: false; reason: "out_of_stock" | "max_reached" };
+
 type CartContextValue = {
   items: CartItem[];
-  addItem: (product: Product, qty?: number) => void;
+  addItem: (product: Product, qty?: number) => AddResult;
   removeItem: (id: string) => void;
-  updateQty: (id: string, quantity: number) => void;
+  updateQty: (id: string, quantity: number) => AddResult;
   clearCart: () => void;
   markReminded: (ids: string[]) => void;
   totalItems: number;
@@ -38,17 +41,15 @@ type CartContextValue = {
   msUntilExpiry: (item: CartItem) => number;
   daysLeft: (item: CartItem) => number;
   needsReminder: (item: CartItem) => boolean;
+  getQtyInCart: (id: string) => number;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
-const STORAGE_KEY = "hama-cart-v2";
+const STORAGE_KEY = "hama-cart-v3";
 
 function purgeExpired(list: CartItem[]): CartItem[] {
   const now = Date.now();
-  return list.filter((i) => {
-    const added = i.addedAt || now;
-    return now - added < CART_TTL_MS;
-  });
+  return list.filter((i) => now - (i.addedAt || now) < CART_TTL_MS);
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
@@ -58,17 +59,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as CartItem[];
-        setItems(purgeExpired(parsed));
-      }
+      if (raw) setItems(purgeExpired(JSON.parse(raw)));
     } catch {
       /* ignore */
     }
     setReady(true);
   }, []);
 
-  // Persist + periodic purge every minute
   useEffect(() => {
     if (!ready) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
@@ -85,22 +82,44 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(t);
   }, [ready]);
 
-  const addItem = useCallback((product: Product, qty = 1) => {
+  const getQtyInCart = useCallback(
+    (id: string) => items.find((i) => i.id === id)?.quantity ?? 0,
+    [items]
+  );
+
+  const addItem = useCallback((product: Product, qty = 1): AddResult => {
+    const maxStock = Math.max(0, product.stock ?? 0);
+    if (maxStock <= 0) return { ok: false, reason: "out_of_stock" };
+
+    let result: AddResult = { ok: true };
     const now = Date.now();
+
     setItems((prev) => {
       const cleaned = purgeExpired(prev);
       const existing = cleaned.find((i) => i.id === product.id);
+      const currentQty = existing?.quantity ?? 0;
+
+      if (currentQty >= maxStock) {
+        result = { ok: false, reason: "max_reached" };
+        return cleaned;
+      }
+
+      const nextQty = Math.min(currentQty + qty, maxStock);
+      if (nextQty === currentQty && currentQty > 0) {
+        result = { ok: false, reason: "max_reached" };
+        return cleaned;
+      }
+
+      result = { ok: true, atMax: nextQty >= maxStock };
+
       if (existing) {
         return cleaned.map((i) =>
           i.id === product.id
-            ? {
-                ...i,
-                quantity: Math.min(i.quantity + qty, 99),
-                // keep original addedAt so 7-day window continues
-              }
+            ? { ...i, quantity: nextQty, stock: maxStock }
             : i
         );
       }
+
       return [
         ...cleaned,
         {
@@ -109,27 +128,39 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           slug: product.slug,
           price: product.price,
           emoji: product.emoji,
-          quantity: qty,
+          quantity: nextQty,
+          stock: maxStock,
           addedAt: now,
         },
       ];
     });
+
+    return result;
   }, []);
 
   const removeItem = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
-  const updateQty = useCallback((id: string, quantity: number) => {
+  const updateQty = useCallback((id: string, quantity: number): AddResult => {
     if (quantity < 1) {
       setItems((prev) => prev.filter((i) => i.id !== id));
-      return;
+      return { ok: true };
     }
+
+    let result: AddResult = { ok: true };
     setItems((prev) =>
-      prev.map((i) =>
-        i.id === id ? { ...i, quantity: Math.min(quantity, 99) } : i
-      )
+      prev.map((i) => {
+        if (i.id !== id) return i;
+        const maxStock = i.stock ?? 99;
+        if (quantity > maxStock) {
+          result = { ok: false, reason: "max_reached" };
+          return { ...i, quantity: maxStock };
+        }
+        return { ...i, quantity: Math.min(quantity, maxStock) };
+      })
     );
+    return result;
   }, []);
 
   const clearCart = useCallback(() => setItems([]), []);
@@ -142,14 +173,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const msUntilExpiry = useCallback((item: CartItem) => {
-    const added = item.addedAt || Date.now();
-    return Math.max(0, added + CART_TTL_MS - Date.now());
+    return Math.max(0, (item.addedAt || Date.now()) + CART_TTL_MS - Date.now());
   }, []);
 
   const daysLeft = useCallback(
-    (item: CartItem) => {
-      return Math.ceil(msUntilExpiry(item) / (24 * 60 * 60 * 1000));
-    },
+    (item: CartItem) => Math.ceil(msUntilExpiry(item) / (24 * 60 * 60 * 1000)),
     [msUntilExpiry]
   );
 
@@ -157,7 +185,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     (item: CartItem) => {
       const left = msUntilExpiry(item);
       if (left <= 0 || left > REMINDER_WINDOW_MS) return false;
-      // remind at most once per item in the window
       if (item.remindedAt && Date.now() - item.remindedAt < REMINDER_WINDOW_MS) {
         return false;
       }
@@ -189,6 +216,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       msUntilExpiry,
       daysLeft,
       needsReminder,
+      getQtyInCart,
     }),
     [
       items,
@@ -202,6 +230,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       msUntilExpiry,
       daysLeft,
       needsReminder,
+      getQtyInCart,
     ]
   );
 

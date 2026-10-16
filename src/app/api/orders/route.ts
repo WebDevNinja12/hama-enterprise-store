@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { sendEmail, stockMaxEmailHtml } from "@/lib/email";
 
 const itemSchema = z.object({
   id: z.string(),
@@ -32,10 +33,70 @@ function generateOrderNumber() {
   return `HAMA-${ts}-${rand}`;
 }
 
+async function notifyAdminsStock(productName: string, stock: number) {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { email: true },
+    });
+    const emails = [
+      ...admins.map((a) => a.email),
+      process.env.ADMIN_NOTIFY_EMAIL,
+    ].filter(Boolean) as string[];
+
+    for (const to of [...new Set(emails)]) {
+      await sendEmail({
+        to,
+        subject:
+          stock <= 0
+            ? `Sold out: ${productName}`
+            : `Low / max stock: ${productName}`,
+        html: stockMaxEmailHtml(productName, stock),
+        text: `${productName} stock is now ${stock}`,
+      });
+    }
+  } catch (e) {
+    console.error("Admin stock notify failed:", e);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          error: "Please sign in or create an account to checkout",
+          code: "AUTH_REQUIRED",
+        },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const data = orderSchema.parse(body);
+    const userId = session.user.id;
+    const email = (session.user.email || data.email).toLowerCase().trim();
+
+    // Enforce stock for StoreProduct items
+    for (const item of data.items) {
+      const dbProduct = await prisma.storeProduct.findFirst({
+        where: {
+          OR: [{ id: item.id }, ...(item.slug ? [{ slug: item.slug }] : [])],
+        },
+      });
+      if (dbProduct && dbProduct.stock < item.quantity) {
+        return NextResponse.json(
+          {
+            error: `"${dbProduct.name}" has only ${dbProduct.stock} left (max reached).`,
+            code: "STOCK_MAX",
+            productName: dbProduct.name,
+            stock: dbProduct.stock,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     const subtotal = data.items.reduce(
       (sum, i) => sum + i.price * i.quantity,
@@ -44,27 +105,6 @@ export async function POST(req: NextRequest) {
     const shipping = subtotal >= 500 || subtotal === 0 ? 0 : 25;
     const tax = Number((subtotal * 0.08).toFixed(2));
     const total = Number((subtotal + shipping + tax).toFixed(2));
-
-    const session = await auth();
-    let userId: string | undefined = session?.user?.id;
-    const email = data.email.toLowerCase().trim();
-
-    if (!userId) {
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) {
-        userId = existing.id;
-      } else {
-        // Guest checkout: create account without password (can set later)
-        const guest = await prisma.user.create({
-          data: {
-            email,
-            name: `${data.firstName} ${data.lastName}`.trim(),
-          },
-        });
-        userId = guest.id;
-      }
-    }
-
     const orderNumber = generateOrderNumber();
 
     const order = await prisma.order.create({
@@ -98,6 +138,26 @@ export async function POST(req: NextRequest) {
       include: { items: true },
     });
 
+    // Decrement stock & notify admin if max / zero
+    for (const item of data.items) {
+      const dbProduct = await prisma.storeProduct.findFirst({
+        where: {
+          OR: [{ id: item.id }, ...(item.slug ? [{ slug: item.slug }] : [])],
+        },
+      });
+      if (!dbProduct) continue;
+
+      const nextStock = Math.max(0, dbProduct.stock - item.quantity);
+      await prisma.storeProduct.update({
+        where: { id: dbProduct.id },
+        data: { stock: nextStock },
+      });
+
+      if (nextStock <= 0) {
+        await notifyAdminsStock(dbProduct.name, nextStock);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       order: {
@@ -124,12 +184,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * List orders:
- * - ADMIN → all orders
- * - Logged-in USER → only their orders
- * - Not logged in → 401
- */
 export async function GET() {
   try {
     const session = await auth();

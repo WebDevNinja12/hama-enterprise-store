@@ -1,8 +1,3 @@
-/**
- * Lightweight email sender via Resend API (https://resend.com).
- * Set RESEND_API_KEY and EMAIL_FROM in Vercel env.
- */
-
 export async function sendEmail(opts: {
   to: string;
   subject: string;
@@ -69,7 +64,10 @@ export function resetPasswordEmailHtml(resetUrl: string) {
   </div>`;
 }
 
-export function cartReminderEmailHtml(items: { name: string; daysLeft: number }[], cartUrl: string) {
+export function cartReminderEmailHtml(
+  items: { name: string; daysLeft: number }[],
+  cartUrl: string
+) {
   const list = items
     .map(
       (i) =>
@@ -84,5 +82,17 @@ export function cartReminderEmailHtml(items: { name: string; daysLeft: number }[
     <p style="margin:24px 0;">
       <a href="${cartUrl}" style="background:#22d3ee;color:#0a0e17;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:600;">View cart</a>
     </p>
+  </div>`;
+}
+
+export function stockMaxEmailHtml(productName: string, stock: number) {
+  return `
+  <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0a0e17;color:#e8eef7;border-radius:12px;">
+    <h1 style="color:#f59e0b;font-size:20px;">Stock alert</h1>
+    <p style="color:#94a3b8;line-height:1.5;">
+      <strong style="color:#e8eef7;">${productName}</strong> has reached its stock limit / is sold out.
+    </p>
+    <p style="color:#22d3ee;">Current stock: ${stock}</p>
+    <p style="color:#64748b;font-size:12px;">Log in to the admin panel to restock.</p>
   </div>`;
 }

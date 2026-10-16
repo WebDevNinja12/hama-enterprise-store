@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   CreditCard,
   Bitcoin,
@@ -23,6 +25,8 @@ const BANK_DETAILS = {
 };
 
 export default function CheckoutPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const { items, subtotal, clearCart, totalItems } = useCart();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [placing, setPlacing] = useState(false);
@@ -45,6 +49,27 @@ export default function CheckoutPage() {
     transferRef: "",
   });
 
+  // Require account
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/login?callbackUrl=/checkout");
+    }
+  }, [status, router]);
+
+  useEffect(() => {
+    if (session?.user?.email) {
+      setForm((f) => ({
+        ...f,
+        email: session.user?.email || f.email,
+        firstName: f.firstName || (session.user?.name || "").split(" ")[0] || "",
+        lastName:
+          f.lastName ||
+          (session.user?.name || "").split(" ").slice(1).join(" ") ||
+          "",
+      }));
+    }
+  }, [session]);
+
   const shipping = subtotal >= 500 || subtotal === 0 ? 0 : 25;
   const tax = subtotal * 0.08;
   const total = subtotal + shipping + tax;
@@ -53,6 +78,24 @@ export default function CheckoutPage() {
     navigator.clipboard.writeText(BANK_DETAILS.accountNumber);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  if (status === "loading" || status === "unauthenticated") {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-20 text-center">
+        <p className="mb-2 text-[var(--muted)]">
+          {status === "unauthenticated"
+            ? "Redirecting to sign in..."
+            : "Loading..."}
+        </p>
+        <p className="text-sm text-[var(--muted)]">
+          You need an account to checkout.{" "}
+          <Link href="/register?callbackUrl=/checkout" className="text-cyan-400">
+            Create one
+          </Link>
+        </p>
+      </div>
+    );
   }
 
   if (orderResult) {
@@ -68,14 +111,8 @@ export default function CheckoutPage() {
             {orderResult.orderNumber}
           </span>
         </p>
-        <p className="mb-1 text-sm text-[var(--muted)]">
-          Total: ${orderResult.total.toFixed(2)} · {orderResult.paymentMethod} ·{" "}
-          {orderResult.status}
-        </p>
         <p className="mb-6 text-sm text-[var(--muted)]">
-          {orderResult.paymentMethod === "bank"
-            ? "We will confirm your bank transfer and process shipping."
-            : "Thank you for shopping with HAMA ENTERPRISE NG."}
+          Total: ${orderResult.total.toFixed(2)} · {orderResult.paymentMethod}
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
@@ -101,7 +138,6 @@ export default function CheckoutPage() {
         <h1 className="mb-2 text-2xl font-bold text-[var(--heading)]">
           Nothing to checkout
         </h1>
-        <p className="mb-6 text-[var(--muted)]">Add items to your cart first.</p>
         <Link href="/catalog" className="text-cyan-400 hover:underline">
           Go to Catalog
         </Link>
@@ -128,7 +164,7 @@ export default function CheckoutPage() {
           })),
           firstName: form.firstName,
           lastName: form.lastName,
-          email: form.email,
+          email: form.email || session?.user?.email,
           phone: form.phone || undefined,
           address: form.address,
           city: form.city,
@@ -141,7 +177,13 @@ export default function CheckoutPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to place order");
+      if (!res.ok) {
+        if (data.code === "AUTH_REQUIRED") {
+          router.push("/login?callbackUrl=/checkout");
+          return;
+        }
+        throw new Error(data.error || "Failed to place order");
+      }
 
       clearCart();
       setOrderResult({
@@ -173,7 +215,6 @@ export default function CheckoutPage() {
     >
       {icon}
       <span className="hidden sm:inline">{label}</span>
-      <span className="sm:hidden">{label.split(" ")[0]}</span>
     </button>
   );
 
@@ -181,12 +222,10 @@ export default function CheckoutPage() {
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-2 flex items-center gap-2 text-xs text-[var(--muted)]">
         <Lock className="h-3.5 w-3.5 text-cyan-400" />
-        <span className="font-medium text-cyan-400">SECURE TRANSMISSION</span>
-        <span>· SSL 256-BIT ENCRYPTION</span>
+        <span className="font-medium text-cyan-400">SECURE CHECKOUT</span>
+        <span>· Account required</span>
       </div>
-      <h1 className="mb-8 text-3xl font-bold text-[var(--heading)]">
-        Checkout & Verification
-      </h1>
+      <h1 className="mb-8 text-3xl font-bold text-[var(--heading)]">Checkout</h1>
 
       {error && (
         <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -231,28 +270,16 @@ export default function CheckoutPage() {
                     }
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs text-[var(--muted)]">
-                    Email
+                    Email (account)
                   </label>
                   <input
                     required
                     type="email"
                     className="input"
                     value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="you@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs text-[var(--muted)]">
-                    Phone (optional)
-                  </label>
-                  <input
-                    className="input"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    placeholder="+234..."
+                    readOnly
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -302,108 +329,24 @@ export default function CheckoutPage() {
                   Payment Method
                 </h2>
               </div>
-              <div className="mb-5 flex flex-wrap gap-2 sm:gap-3">
-                {methodBtn("card", "Credit Card", <CreditCard className="h-4 w-4" />)}
-                {methodBtn("bank", "Bank Transfer", <Building2 className="h-4 w-4" />)}
-                {methodBtn("crypto", "Crypto / QR", <Bitcoin className="h-4 w-4" />)}
+              <div className="mb-5 flex flex-wrap gap-2">
+                {methodBtn("card", "Card", <CreditCard className="h-4 w-4" />)}
+                {methodBtn("bank", "Bank", <Building2 className="h-4 w-4" />)}
+                {methodBtn("crypto", "Crypto", <Bitcoin className="h-4 w-4" />)}
               </div>
 
-              {paymentMethod === "card" && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-1.5 block text-xs text-[var(--muted)]">
-                      Card Number
-                    </label>
-                    <input className="input" placeholder="4532 8821 9012 8892" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-1.5 block text-xs text-[var(--muted)]">
-                        Expiry
-                      </label>
-                      <input className="input" placeholder="08/28" />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs text-[var(--muted)]">
-                        CVV
-                      </label>
-                      <input
-                        className="input"
-                        placeholder="•••"
-                        type="password"
-                        maxLength={4}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {paymentMethod === "bank" && (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-5">
-                    <p className="mb-3 text-sm font-medium text-cyan-400">
-                      Transfer exactly{" "}
-                      <span className="text-[var(--heading)]">
-                        ${total.toFixed(2)}
-                      </span>{" "}
-                      to:
-                    </p>
-                    <dl className="space-y-2 text-sm">
-                      <div className="flex justify-between gap-4">
-                        <dt className="text-[var(--muted)]">Bank</dt>
-                        <dd className="font-medium text-[var(--heading)]">
-                          {BANK_DETAILS.bankName}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <dt className="text-[var(--muted)]">Account Name</dt>
-                        <dd className="font-medium text-[var(--heading)]">
-                          {BANK_DETAILS.accountName}
-                        </dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <dt className="text-[var(--muted)]">Account Number</dt>
-                        <dd className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-cyan-400">
-                            {BANK_DETAILS.accountNumber}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={copyAccountNumber}
-                            className="rounded p-1 text-[var(--muted)] hover:bg-white/10 hover:text-cyan-400"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          {copied && (
-                            <span className="text-xs text-cyan-400">Copied</span>
-                          )}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs text-[var(--muted)]">
-                      Transfer reference (optional)
-                    </label>
-                    <input
-                      className="input"
-                      value={form.transferRef}
-                      onChange={(e) =>
-                        setForm({ ...form, transferRef: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              {paymentMethod === "crypto" && (
-                <div className="rounded-lg border border-dashed border-cyan-500/30 bg-cyan-500/5 p-6 text-center">
-                  <p className="mb-2 text-sm text-[var(--muted)]">
-                    Scan the QR code with your wallet app
+                <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-5 text-sm">
+                  <p className="mb-2 text-cyan-400">
+                    Transfer ${total.toFixed(2)} to {BANK_DETAILS.accountName}
                   </p>
-                  <div className="mx-auto mb-3 flex h-40 w-40 items-center justify-center rounded-xl bg-white text-4xl">
-                    ▦
-                  </div>
+                  <p className="font-mono text-[var(--heading)]">
+                    {BANK_DETAILS.accountNumber}{" "}
+                    <button type="button" onClick={copyAccountNumber}>
+                      <Copy className="inline h-3.5 w-3.5" />
+                    </button>
+                    {copied && " Copied"}
+                  </p>
                 </div>
               )}
             </div>
@@ -414,53 +357,47 @@ export default function CheckoutPage() {
               <h2 className="mb-4 font-semibold text-[var(--heading)]">
                 Order Summary ({totalItems})
               </h2>
-              <ul className="mb-4 max-h-48 space-y-2 overflow-y-auto text-sm">
+              <ul className="mb-4 max-h-48 space-y-2 overflow-y-auto text-sm text-[var(--muted)]">
                 {items.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex justify-between gap-2 text-[var(--muted)]"
-                  >
+                  <li key={item.id} className="flex justify-between gap-2">
                     <span className="truncate">
                       {item.emoji} {item.name} × {item.quantity}
+                      {item.stock != null && (
+                        <span className="text-[10px]"> (max {item.stock})</span>
+                      )}
                     </span>
-                    <span className="shrink-0 text-[var(--heading)]">
+                    <span className="text-[var(--heading)]">
                       ${(item.price * item.quantity).toLocaleString()}
                     </span>
                   </li>
                 ))}
               </ul>
-              <div className="mb-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
-                <div className="flex justify-between text-[var(--muted)]">
+              <div className="mb-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm text-[var(--muted)]">
+                <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-[var(--muted)]">
+                <div className="flex justify-between">
                   <span>Shipping</span>
-                  <span className={shipping === 0 ? "text-cyan-400" : ""}>
-                    {shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}
-                  </span>
+                  <span>{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span>
                 </div>
-                <div className="flex justify-between text-[var(--muted)]">
+                <div className="flex justify-between">
                   <span>Tax</span>
                   <span>${tax.toFixed(2)}</span>
                 </div>
               </div>
-              <div className="mb-5 flex items-center justify-between border-t border-[var(--border)] pt-4">
-                <p className="text-sm text-[var(--muted)]">Total Due</p>
-                <p className="text-2xl font-bold text-cyan-400">
+              <div className="mb-5 flex justify-between border-t border-[var(--border)] pt-4">
+                <span className="text-[var(--muted)]">Total</span>
+                <span className="text-2xl font-bold text-cyan-400">
                   ${total.toFixed(2)}
-                </p>
+                </span>
               </div>
               <button
                 type="submit"
                 disabled={placing}
-                className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm disabled:opacity-50"
+                className="btn-primary w-full py-3.5 text-sm disabled:opacity-50"
               >
-                {placing
-                  ? "Placing order..."
-                  : paymentMethod === "bank"
-                    ? "I Have Transferred — Place Order"
-                    : "Place order"}
+                {placing ? "Placing order..." : "Place order"}
               </button>
             </div>
           </div>
