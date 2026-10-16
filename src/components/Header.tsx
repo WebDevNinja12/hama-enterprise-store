@@ -30,10 +30,10 @@ export default function Header() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-2xl">
+      <div className="mx-auto flex h-[4.25rem] max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/20 text-sm font-bold text-cyan-500">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400/30 to-blue-500/20 text-sm font-bold text-cyan-400 ring-1 ring-cyan-500/20">
             H
           </div>
           <span className="hidden text-sm font-bold tracking-wide text-[var(--heading)] sm:block">
@@ -41,25 +41,25 @@ export default function Header() {
           </span>
         </Link>
 
-        <div className="relative mx-4 hidden flex-1 max-w-md md:block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+        <div className="relative mx-2 hidden flex-1 max-w-sm md:block lg:mx-6">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
           <input
             type="search"
-            placeholder="Search high-tech gadgets..."
-            className="input h-10 pl-10 text-sm"
+            placeholder="Search gadgets..."
+            className="input h-10 rounded-full pl-10 text-sm"
           />
         </div>
 
-        <nav className="ml-auto hidden items-center gap-1 md:flex">
+        <nav className="ml-auto hidden items-center gap-0.5 md:flex">
           {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
                 pathname === link.href
-                  ? "bg-cyan-500/15 text-cyan-500"
-                  : "text-[var(--muted)] hover:text-[var(--heading)]"
+                  ? "bg-cyan-500/15 text-cyan-400"
+                  : "text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
               )}
             >
               {link.label}
@@ -67,28 +67,24 @@ export default function Header() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-0.5 sm:gap-1">
           <button
             type="button"
             onClick={toggleTheme}
-            className="rounded-lg p-2 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            className="rounded-full p-2.5 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
+            aria-label="Toggle theme"
           >
-            {theme === "dark" ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )}
+            {theme === "dark" ? <Sun className="h-4.5 w-4.5 h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
           </button>
 
           <Link
             href="/cart"
-            className="relative rounded-lg p-2 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
+            className="relative rounded-full p-2.5 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
           >
-            <ShoppingCart className="h-5 w-5" />
+            <ShoppingCart className="h-[18px] w-[18px]" />
             {totalItems > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-bold text-black">
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-400 px-1 text-[10px] font-bold text-black">
                 {totalItems > 99 ? "99+" : totalItems}
               </span>
             )}
@@ -96,13 +92,13 @@ export default function Header() {
 
           <Link
             href="/login"
-            className="rounded-lg p-2 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
+            className="rounded-full p-2.5 text-[var(--muted)] transition hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
           >
-            <User className="h-5 w-5" />
+            <User className="h-[18px] w-[18px]" />
           </Link>
 
           <button
-            className="rounded-lg p-2 text-[var(--muted)] md:hidden"
+            className="rounded-full p-2.5 text-[var(--muted)] md:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -111,17 +107,17 @@ export default function Header() {
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-[var(--border)] bg-[var(--card)] px-4 py-3 md:hidden">
-          <nav className="flex flex-col gap-1">
+        <div className="border-t border-[var(--border)] bg-[var(--card-solid)] px-4 py-3 md:hidden">
+          <nav className="flex flex-col gap-0.5">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "rounded-lg px-3 py-2.5 text-sm font-medium",
+                  "rounded-xl px-3 py-2.5 text-sm font-medium",
                   pathname === link.href
-                    ? "bg-cyan-500/15 text-cyan-500"
+                    ? "bg-cyan-500/15 text-cyan-400"
                     : "text-[var(--muted)]"
                 )}
               >
@@ -134,7 +130,7 @@ export default function Header() {
                 toggleTheme();
                 setMobileOpen(false);
               }}
-              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-[var(--muted)]"
+              className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm text-[var(--muted)]"
             >
               {theme === "dark" ? (
                 <>
