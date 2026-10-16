@@ -37,6 +37,17 @@ export async function PATCH(
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
+    // Delivered orders cannot be reopened or changed
+    if (existing.status === "DELIVERED") {
+      return NextResponse.json(
+        {
+          error:
+            "Delivered orders are final and cannot be reopened or changed.",
+        },
+        { status: 400 }
+      );
+    }
+
     const order = await prisma.order.update({
       where: { id },
       data: {

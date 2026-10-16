@@ -41,6 +41,12 @@ const providers: Provider[] = [
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) return null;
 
+      // Touch last activity
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastActiveAt: new Date() },
+      });
+
       return {
         id: user.id,
         email: user.email,
@@ -72,16 +78,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id;
         token.role = (user as { role?: Role }).role ?? "USER";
       }
-      // Refresh role from DB occasionally is optional; keep token values
-      if (!token.role && token.id) {
+      if (token.id) {
+        // Keep activity fresh (throttled by session usage)
         try {
-          const dbUser = await prisma.user.findUnique({
+          await prisma.user.update({
             where: { id: token.id as string },
-            select: { role: true },
+            data: { lastActiveAt: new Date() },
           });
-          if (dbUser) token.role = dbUser.role;
         } catch {
-          /* ignore */
+          /* user may have been deleted */
         }
       }
       return token;

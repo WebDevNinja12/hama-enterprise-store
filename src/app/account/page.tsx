@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Package, LogOut, User, Shield } from "lucide-react";
+import { Package, LogOut, User, Shield, Trash2 } from "lucide-react";
 
 type OrderItem = {
   id: string;
@@ -28,11 +28,11 @@ export default function AccountPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/login");
-    }
+    if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
   useEffect(() => {
@@ -50,6 +50,27 @@ export default function AccountPage() {
       }
     })();
   }, [status]);
+
+  async function handleDeleteAccount() {
+    const ok = confirm(
+      "Delete your account permanently? This cannot be undone. Your orders history tied to this login will be removed with the account."
+    );
+    if (!ok) return;
+    const again = confirm("Are you sure? Type OK in the next step conceptually — this is final.");
+    if (!again) return;
+
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch("/api/account", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete");
+      await signOut({ callbackUrl: "/" });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+      setDeleting(false);
+    }
+  }
 
   if (status === "loading" || status === "unauthenticated") {
     return (
@@ -99,9 +120,7 @@ export default function AccountPage() {
             {session?.user?.name || "—"}
           </p>
           <p className="text-xs text-[var(--muted)]">{session?.user?.email}</p>
-          {isAdmin && (
-            <span className="badge badge-cyan mt-3">ADMIN</span>
-          )}
+          {isAdmin && <span className="badge badge-cyan mt-3">ADMIN</span>}
         </div>
         <div className="card p-5">
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
@@ -111,7 +130,7 @@ export default function AccountPage() {
           <p className="mt-1 text-2xl font-bold text-[var(--heading)]">
             {loadingOrders ? "—" : orders.length}
           </p>
-          <p className="text-xs text-[var(--muted)]">Total orders on this account</p>
+          <p className="text-xs text-[var(--muted)]">Orders on this account</p>
         </div>
       </div>
 
@@ -125,15 +144,15 @@ export default function AccountPage() {
         <div className="card p-10 text-center">
           <Package className="mx-auto mb-3 h-10 w-10 text-[var(--muted)]" />
           <p className="text-[var(--heading)]">No orders yet</p>
-          <p className="mt-1 mb-4 text-sm text-[var(--muted)]">
-            When you place an order while signed in, it will show up here.
-          </p>
-          <Link href="/catalog" className="btn-primary inline-flex px-6 py-2.5 text-sm">
+          <Link
+            href="/catalog"
+            className="btn-primary mt-4 inline-flex px-6 py-2.5 text-sm"
+          >
             Browse catalog
           </Link>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="mb-12 space-y-4">
           {orders.map((order) => (
             <div key={order.id} className="card p-5">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -166,15 +185,29 @@ export default function AccountPage() {
                   </li>
                 ))}
               </ul>
-              {order.paymentMethod && (
-                <p className="mt-2 text-xs capitalize text-[var(--muted)]">
-                  Payment: {order.paymentMethod}
-                </p>
-              )}
             </div>
           ))}
         </div>
       )}
+
+      <div className="card border-red-500/20 p-6">
+        <h2 className="mb-1 text-sm font-semibold text-red-400">Danger zone</h2>
+        <p className="mb-4 text-sm text-[var(--muted)]">
+          Delete your account permanently. Accounts with no activity for 6 months
+          are also removed automatically.
+        </p>
+        {deleteError && (
+          <p className="mb-3 text-sm text-red-400">{deleteError}</p>
+        )}
+        <button
+          onClick={handleDeleteAccount}
+          disabled={deleting}
+          className="inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/25 disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" />
+          {deleting ? "Deleting..." : "Delete my account"}
+        </button>
+      </div>
     </div>
   );
 }

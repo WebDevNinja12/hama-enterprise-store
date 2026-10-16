@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Package,
@@ -48,8 +46,6 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export default function AdminOrdersPage() {
-  const { data: session, status: authStatus } = useSession();
-  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -72,19 +68,8 @@ export default function AdminOrdersPage() {
   }
 
   useEffect(() => {
-    if (authStatus === "unauthenticated") {
-      router.push("/login");
-      return;
-    }
-    if (authStatus === "authenticated") {
-      if (session?.user?.role !== "ADMIN") {
-        setError("Admin access required. Sign in with the admin account.");
-        setLoading(false);
-        return;
-      }
-      load();
-    }
-  }, [authStatus, session, router]);
+    load();
+  }, []);
 
   async function updateStatus(orderId: string, status: string) {
     setUpdatingId(orderId);
@@ -109,9 +94,7 @@ export default function AdminOrdersPage() {
   }
 
   const filtered =
-    filter === "ALL"
-      ? orders
-      : orders.filter((o) => o.status === filter);
+    filter === "ALL" ? orders : orders.filter((o) => o.status === filter);
 
   const counts = {
     ALL: orders.length,
@@ -121,14 +104,6 @@ export default function AdminOrdersPage() {
     DELIVERED: orders.filter((o) => o.status === "DELIVERED").length,
     CANCELLED: orders.filter((o) => o.status === "CANCELLED").length,
   };
-
-  if (authStatus === "loading") {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-20 text-center text-[var(--muted)]">
-        Loading...
-      </div>
-    );
-  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -144,7 +119,8 @@ export default function AdminOrdersPage() {
             Order management
           </h1>
           <p className="text-sm text-[var(--muted)]">
-            Accept, decline, process, and fulfill orders
+            Accept, decline, process, and fulfill orders. Delivered orders are
+            final.
           </p>
         </div>
         <button
@@ -155,7 +131,6 @@ export default function AdminOrdersPage() {
         </button>
       </div>
 
-      {/* Filters */}
       <div className="mb-6 flex flex-wrap gap-2">
         {(
           [
@@ -199,6 +174,7 @@ export default function AdminOrdersPage() {
         <div className="space-y-4">
           {filtered.map((order) => {
             const busy = updatingId === order.id;
+            const isDelivered = order.status === "DELIVERED";
             return (
               <div key={order.id} className="card p-5">
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -228,12 +204,6 @@ export default function AdminOrdersPage() {
                     >
                       {order.status}
                     </span>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {order.paymentMethod || "—"}
-                      {order.paymentReference
-                        ? ` · ${order.paymentReference}`
-                        : ""}
-                    </p>
                   </div>
                 </div>
 
@@ -250,21 +220,20 @@ export default function AdminOrdersPage() {
                   ))}
                 </ul>
 
-                {/* Admin actions */}
                 <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
                   {order.status === "PENDING" && (
                     <>
                       <button
                         disabled={busy}
                         onClick={() => updateStatus(order.id, "PROCESSING")}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3.5 py-1.5 text-xs font-semibold text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3.5 py-1.5 text-xs font-semibold text-emerald-400 ring-1 ring-emerald-500/30 disabled:opacity-50"
                       >
                         <Check className="h-3.5 w-3.5" /> Accept
                       </button>
                       <button
                         disabled={busy}
                         onClick={() => updateStatus(order.id, "CANCELLED")}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-3.5 py-1.5 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/25 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-3.5 py-1.5 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 disabled:opacity-50"
                       >
                         <X className="h-3.5 w-3.5" /> Decline
                       </button>
@@ -276,14 +245,14 @@ export default function AdminOrdersPage() {
                       <button
                         disabled={busy}
                         onClick={() => updateStatus(order.id, "SHIPPED")}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/15 px-3.5 py-1.5 text-xs font-semibold text-cyan-400 ring-1 ring-cyan-500/30 transition hover:bg-cyan-500/25 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/15 px-3.5 py-1.5 text-xs font-semibold text-cyan-400 ring-1 ring-cyan-500/30 disabled:opacity-50"
                       >
                         <Truck className="h-3.5 w-3.5" /> Mark shipped
                       </button>
                       <button
                         disabled={busy}
                         onClick={() => updateStatus(order.id, "CANCELLED")}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-3.5 py-1.5 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/25 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-3.5 py-1.5 text-xs font-semibold text-red-400 ring-1 ring-red-500/30 disabled:opacity-50"
                       >
                         <X className="h-3.5 w-3.5" /> Cancel
                       </button>
@@ -294,27 +263,30 @@ export default function AdminOrdersPage() {
                     <button
                       disabled={busy}
                       onClick={() => updateStatus(order.id, "DELIVERED")}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3.5 py-1.5 text-xs font-semibold text-emerald-400 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3.5 py-1.5 text-xs font-semibold text-emerald-400 ring-1 ring-emerald-500/30 disabled:opacity-50"
                     >
                       <PackageCheck className="h-3.5 w-3.5" /> Mark delivered
                     </button>
                   )}
 
-                  {(order.status === "CANCELLED" ||
-                    order.status === "DELIVERED") && (
+                  {order.status === "CANCELLED" && (
                     <button
                       disabled={busy}
                       onClick={() => updateStatus(order.id, "PENDING")}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3.5 py-1.5 text-xs font-semibold text-[var(--muted)] transition hover:border-cyan-500/40 hover:text-cyan-400 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3.5 py-1.5 text-xs font-semibold text-[var(--muted)] hover:border-cyan-500/40 hover:text-cyan-400 disabled:opacity-50"
                     >
                       <Clock className="h-3.5 w-3.5" /> Reopen as pending
                     </button>
                   )}
 
+                  {isDelivered && (
+                    <p className="text-xs text-[var(--muted)]">
+                      Delivered — final. Cannot be reopened.
+                    </p>
+                  )}
+
                   {busy && (
-                    <span className="text-xs text-[var(--muted)]">
-                      Updating...
-                    </span>
+                    <span className="text-xs text-[var(--muted)]">Updating...</span>
                   )}
                 </div>
 
