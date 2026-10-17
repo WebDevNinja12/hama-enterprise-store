@@ -10,6 +10,15 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: "/logo.png",
+        destination:
+          "https://raw.githubusercontent.com/WebDevNinja12/hama-enterprise-store/main/logo.png",
+      },
+    ];
+  },
 };
 
 export default nextConfig;
