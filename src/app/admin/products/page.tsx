@@ -18,10 +18,12 @@ type Product = {
   price: number;
   category: string;
   brand: string;
-  emoji: string;
+  emoji?: string;
+  image?: string;
   stock: number;
   description: string;
   published?: boolean;
+  source?: "db" | "seed";
 };
 
 const emptyForm = {
@@ -31,7 +33,6 @@ const emptyForm = {
   compareAt: "",
   category: "General",
   brand: "HAMA",
-  emoji: "📦",
   stock: "10",
 };
 
@@ -99,7 +100,6 @@ export default function AdminProductsPage() {
           compareAt: form.compareAt ? Number(form.compareAt) : null,
           category: form.category,
           brand: form.brand,
-          emoji: form.emoji || "📦",
           stock: Number(form.stock) || 0,
         }),
       });
@@ -116,6 +116,10 @@ export default function AdminProductsPage() {
   }
 
   async function handleDelete(id: string, name: string) {
+    if (id.startsWith("seed-")) {
+      setError("Catalog seed products cannot be deleted here. Add a DB copy to manage them.");
+      return;
+    }
     if (!confirm(`Delete product "${name}"?`)) return;
     try {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
@@ -128,6 +132,10 @@ export default function AdminProductsPage() {
   }
 
   async function handleStockSave(id: string) {
+    if (id.startsWith("seed-")) {
+      setError("Seed catalog stock is fixed. Create the product in DB to manage stock.");
+      return;
+    }
     const raw = editingStock[id];
     if (raw === undefined) return;
     const stock = Math.max(0, parseInt(raw, 10) || 0);
@@ -164,10 +172,10 @@ export default function AdminProductsPage() {
             <ArrowLeft className="h-3 w-3" /> Admin
           </Link>
           <h1 className="text-2xl font-bold text-[var(--heading)]">
-            Product inventory
+            All products
           </h1>
           <p className="text-sm text-[var(--muted)]">
-            All products · out of stock · restock
+            Full catalog (store + admin-added) · out of stock · restock
           </p>
         </div>
         <button
@@ -178,7 +186,6 @@ export default function AdminProductsPage() {
         </button>
       </div>
 
-      {/* Stats */}
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <div className="card p-4">
           <p className="text-2xl font-bold text-[var(--heading)]">{counts.ALL}</p>
@@ -281,7 +288,6 @@ export default function AdminProductsPage() {
         </form>
       </div>
 
-      {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-2">
         {(
           [
@@ -306,12 +312,7 @@ export default function AdminProductsPage() {
       </div>
 
       <h2 className="mb-4 font-semibold text-[var(--heading)]">
-        {filter === "OUT"
-          ? "Out of stock products"
-          : filter === "LOW"
-            ? "Low stock products"
-            : "All products"}{" "}
-        ({filtered.length})
+        Products ({filtered.length})
       </h2>
 
       {loading ? (
@@ -326,6 +327,7 @@ export default function AdminProductsPage() {
           {filtered.map((p) => {
             const out = p.stock <= 0;
             const low = p.stock > 0 && p.stock <= 5;
+            const isSeed = p.source === "seed" || p.id.startsWith("seed-");
             return (
               <div
                 key={p.id}
@@ -334,11 +336,25 @@ export default function AdminProductsPage() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{p.emoji}</span>
+                  <div className="h-14 w-14 overflow-hidden rounded-xl bg-[var(--surface)]">
+                    {p.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.image}
+                        alt={p.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xl">
+                        {p.emoji || "📦"}
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <p className="font-medium text-[var(--heading)]">{p.name}</p>
                     <p className="text-xs text-[var(--muted)]">
                       {p.category} · {p.brand}
+                      {isSeed ? " · catalog" : ""}
                     </p>
                     {out && (
                       <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-red-400">
@@ -353,43 +369,52 @@ export default function AdminProductsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-[var(--muted)]">Stock</label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="input h-9 w-20 py-1 text-sm"
-                      value={
-                        editingStock[p.id] !== undefined
-                          ? editingStock[p.id]
-                          : String(p.stock)
-                      }
-                      onChange={(e) =>
-                        setEditingStock((s) => ({
-                          ...s,
-                          [p.id]: e.target.value,
-                        }))
-                      }
-                    />
-                    {editingStock[p.id] !== undefined && (
-                      <button
-                        onClick={() => handleStockSave(p.id)}
-                        className="btn-primary px-3 py-1.5 text-xs"
-                      >
-                        Save
-                      </button>
-                    )}
-                  </div>
+                  {!isSeed && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-[var(--muted)]">Stock</label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input h-9 w-20 py-1 text-sm"
+                        value={
+                          editingStock[p.id] !== undefined
+                            ? editingStock[p.id]
+                            : String(p.stock)
+                        }
+                        onChange={(e) =>
+                          setEditingStock((s) => ({
+                            ...s,
+                            [p.id]: e.target.value,
+                          }))
+                        }
+                      />
+                      {editingStock[p.id] !== undefined && (
+                        <button
+                          onClick={() => handleStockSave(p.id)}
+                          className="btn-primary px-3 py-1.5 text-xs"
+                        >
+                          Save
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {isSeed && (
+                    <span className="text-xs text-[var(--muted)]">
+                      Stock: {p.stock}
+                    </span>
+                  )}
                   <p className="font-semibold text-cyan-400">
                     ${Number(p.price).toLocaleString()}
                   </p>
-                  <button
-                    onClick={() => handleDelete(p.id, p.name)}
-                    className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {!isSeed && (
+                    <button
+                      onClick={() => handleDelete(p.id, p.name)}
+                      className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
+import { products as seedProducts } from "@/lib/products";
 
 function slugify(text: string) {
   return text
@@ -25,7 +26,7 @@ const productSchema = z.object({
   slug: z.string().optional(),
 });
 
-function mapProduct(p: {
+function mapDbProduct(p: {
   id: string;
   name: string;
   slug: string;
@@ -48,14 +49,16 @@ function mapProduct(p: {
     category: p.category,
     brand: p.brand,
     emoji: p.emoji,
+    image: undefined as string | undefined,
     stock: p.stock,
     rating: p.rating,
     description: p.description,
     published: p.published,
+    source: "db" as const,
   };
 }
 
-/** Public: published only. Admin: ?admin=1 returns all products */
+/** Public: published only. Admin: ?admin=1 returns DB + seed catalog products */
 export async function GET(req: NextRequest) {
   try {
     const adminFlag = req.nextUrl.searchParams.get("admin") === "1";
@@ -69,15 +72,45 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const products = await prisma.storeProduct.findMany({
+    const dbProducts = await prisma.storeProduct.findMany({
       where: isAdmin ? undefined : { published: true },
       orderBy: { createdAt: "desc" },
     });
 
+    const mapped = dbProducts.map(mapDbProduct);
+
+    if (isAdmin) {
+      const dbSlugs = new Set(mapped.map((p) => p.slug));
+      const seeds = seedProducts
+        .filter((p) => !dbSlugs.has(p.slug))
+        .map((p) => ({
+          id: `seed-${p.id}`,
+          name: p.name,
+          slug: p.slug,
+          price: p.price,
+          compareAt: p.compareAt,
+          category: p.category,
+          brand: p.brand,
+          emoji: p.emoji || "📦",
+          image: p.image,
+          stock: p.stock,
+          rating: p.rating,
+          description: p.description,
+          published: true,
+          source: "seed" as const,
+        }));
+      const all = [...mapped, ...seeds];
+      return NextResponse.json({
+        products: all,
+        outOfStock: all.filter((p) => p.stock <= 0).length,
+        lowStock: all.filter((p) => p.stock > 0 && p.stock <= 5).length,
+      });
+    }
+
     return NextResponse.json({
-      products: products.map(mapProduct),
-      outOfStock: products.filter((p) => p.stock <= 0).length,
-      lowStock: products.filter((p) => p.stock > 0 && p.stock <= 5).length,
+      products: mapped,
+      outOfStock: mapped.filter((p) => p.stock <= 0).length,
+      lowStock: mapped.filter((p) => p.stock > 0 && p.stock <= 5).length,
     });
   } catch (err) {
     console.error("List products error:", err);
@@ -119,7 +152,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      product: mapProduct(product),
+      product: mapDbProduct(product),
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

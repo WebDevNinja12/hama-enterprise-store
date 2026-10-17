@@ -101,7 +101,7 @@ export default function AdminGalleryPage() {
           type: form.type,
           url: form.url,
           poster: form.poster || null,
-          narration: form.narration || null,
+          narration: form.narration.trim() || null,
           published: form.published,
         }),
       });
@@ -135,7 +135,8 @@ export default function AdminGalleryPage() {
         Gallery media
       </h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
-        Add images/videos with a short narration for customers. View on{" "}
+        Upload media and write a <strong className="text-cyan-400">narration</strong>{" "}
+        customers will read on{" "}
         <Link href="/gallery" className="text-cyan-400 hover:underline">
           /gallery
         </Link>
@@ -150,8 +151,25 @@ export default function AdminGalleryPage() {
 
       <form onSubmit={handleAdd} className="card mb-8 space-y-4 p-6">
         <h2 className="flex items-center gap-2 font-semibold text-[var(--heading)]">
-          <Plus className="h-4 w-4 text-cyan-400" /> Add media
+          <Plus className="h-4 w-4 text-cyan-400" /> Add media + narration
         </h2>
+
+        {/* Narration first — highly visible */}
+        <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-4">
+          <label className="mb-1.5 block text-sm font-semibold text-cyan-400">
+            Narration (customers see this)
+          </label>
+          <textarea
+            className="input min-h-[100px] border-cyan-500/30 bg-black/20"
+            value={form.narration}
+            onChange={(e) => setForm({ ...form, narration: e.target.value })}
+            placeholder="Tell the story of this image or video — what clients should know..."
+          />
+          <p className="mt-1.5 text-xs text-[var(--muted)]">
+            This text appears under the media on the public gallery page.
+          </p>
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs text-[var(--muted)]">Title</label>
@@ -175,17 +193,6 @@ export default function AdminGalleryPage() {
               <option value="IMAGE">Image</option>
               <option value="VIDEO">Video</option>
             </select>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs text-[var(--muted)]">
-              Narration (shown to customers)
-            </label>
-            <textarea
-              className="input min-h-[88px]"
-              value={form.narration}
-              onChange={(e) => setForm({ ...form, narration: e.target.value })}
-              placeholder="Describe what the customer is seeing — story, product story, project notes..."
-            />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-[var(--muted)]">
@@ -304,10 +311,12 @@ export default function AdminGalleryPage() {
                   <p className="text-xs text-[var(--muted)]">
                     {item.type} · {item.published ? "Published" : "Draft"}
                   </p>
-                  {item.narration && (
-                    <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                  {item.narration ? (
+                    <p className="mt-2 rounded-lg bg-cyan-500/10 p-2 text-sm leading-relaxed text-[var(--heading)]">
                       {item.narration}
                     </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-amber-400">No narration yet</p>
                   )}
                 </div>
               </div>
