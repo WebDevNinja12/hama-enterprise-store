@@ -15,6 +15,7 @@ declare module "next-auth" {
       name?: string | null;
       email?: string | null;
       image?: string | null;
+      hasCustomImage?: boolean;
     };
   }
   interface User {
@@ -22,7 +23,37 @@ declare module "next-auth" {
   }
 }
 
-const ADMIN_LOGO = "/logo.png";
+const ADMIN_LOGO =
+  "https://raw.githubusercontent.com/WebDevNinja12/hama-enterprise-store/main/logo.png";
+
+/**
+ * Never put large data: URLs into the JWT cookie — that causes
+ * 494 REQUEST_HEADER_TOO_LARGE on Vercel/Cloudflare.
+ * Only allow short http(s) URLs or known relative paths.
+ */
+function safeSessionImage(
+  image: string | null | undefined,
+  role?: Role | string
+): string | null {
+  if (!image) {
+    return role === "ADMIN" ? ADMIN_LOGO : null;
+  }
+  if (image.startsWith("data:")) {
+    // Stored in DB only — load via /api/account, not cookie
+    return role === "ADMIN" ? ADMIN_LOGO : null;
+  }
+  if (image.length > 500) {
+    return role === "ADMIN" ? ADMIN_LOGO : null;
+  }
+  if (
+    image.startsWith("http://") ||
+    image.startsWith("https://") ||
+    image.startsWith("/")
+  ) {
+    return image;
+  }
+  return role === "ADMIN" ? ADMIN_LOGO : null;
+}
 
 const providers: Provider[] = [
   Credentials({
@@ -52,16 +83,11 @@ const providers: Provider[] = [
         data: { lastActiveAt: new Date() },
       });
 
-      const image =
-        user.role === "ADMIN"
-          ? user.image || ADMIN_LOGO
-          : user.image;
-
       return {
         id: user.id,
         email: user.email,
         name: user.name,
-        image,
+        image: safeSessionImage(user.image, user.role),
         role: user.role,
       };
     },
@@ -79,7 +105,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
   providers,
   callbacks: {
@@ -87,17 +113,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: Role }).role ?? "USER";
-        token.picture = user.image;
         token.name = user.name;
+        token.picture = safeSessionImage(
+          user.image,
+          (user as { role?: Role }).role
+        );
+        token.hasCustomImage = Boolean(
+          user.image && String(user.image).startsWith("data:")
+        );
       }
 
-      // Refresh profile from client update
       if (trigger === "update" && session) {
         if (session.name !== undefined) token.name = session.name;
-        if (session.image !== undefined) token.picture = session.image;
+        // Never accept a data URL into the token from client update
+        if (session.image !== undefined) {
+          token.picture = safeSessionImage(
+            session.image,
+            token.role as Role
+          );
+        }
+        if (session.hasCustomImage !== undefined) {
+          token.hasCustomImage = session.hasCustomImage;
+        }
       }
 
-      if (token.id) {
+      // Keep JWT small: only id, role, name, short image URL — no data URLs
+      if (token.id && (user || trigger === "update")) {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
@@ -106,19 +147,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (dbUser) {
             token.role = dbUser.role;
             token.name = dbUser.name;
-            token.picture =
-              dbUser.role === "ADMIN"
-                ? dbUser.image || ADMIN_LOGO
-                : dbUser.image;
+            token.picture = safeSessionImage(dbUser.image, dbUser.role);
+            token.hasCustomImage = Boolean(
+              dbUser.image && dbUser.image.startsWith("data:")
+            );
           }
-          await prisma.user.update({
-            where: { id: token.id as string },
-            data: { lastActiveAt: new Date() },
-          });
         } catch {
           /* ignore */
         }
       }
+
+      // Drop any accidental oversized picture field
+      if (
+        typeof token.picture === "string" &&
+        (token.picture.startsWith("data:") || token.picture.length > 500)
+      ) {
+        token.picture =
+          token.role === "ADMIN" ? ADMIN_LOGO : null;
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -126,9 +173,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = (token.id as string) || "";
         session.user.role = (token.role as Role) || "USER";
         session.user.name = (token.name as string) || session.user.name;
-        session.user.image =
-          (token.picture as string) ||
-          (token.role === "ADMIN" ? ADMIN_LOGO : null);
+        session.user.image = safeSessionImage(
+          token.picture as string | null,
+          token.role as Role
+        );
+        session.user.hasCustomImage = Boolean(token.hasCustomImage);
       }
       return session;
     },

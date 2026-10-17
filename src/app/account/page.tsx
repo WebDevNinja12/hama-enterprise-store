@@ -23,6 +23,9 @@ type Order = {
   items: OrderItem[];
 };
 
+const ADMIN_LOGO =
+  "https://raw.githubusercontent.com/WebDevNinja12/hama-enterprise-store/main/logo.png";
+
 export default function AccountPage() {
   const { data: session, status, update } = useSession();
   const router = useRouter();
@@ -33,10 +36,29 @@ export default function AccountPage() {
   const [profileOk, setProfileOk] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
+
+  // Load full profile image from API (not from cookie)
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    (async () => {
+      try {
+        const res = await fetch("/api/account");
+        const data = await res.json();
+        if (res.ok && data.user?.image) {
+          setAvatarUrl(data.user.image);
+        } else if (session?.user?.role === "ADMIN") {
+          setAvatarUrl(ADMIN_LOGO);
+        }
+      } catch {
+        if (session?.user?.role === "ADMIN") setAvatarUrl(ADMIN_LOGO);
+      }
+    })();
+  }, [status, session?.user?.role]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -61,8 +83,8 @@ export default function AccountPage() {
       setProfileError("Please choose an image file");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setProfileError("Image must be under 2MB");
+    if (file.size > 600 * 1024) {
+      setProfileError("Image must be under 600KB");
       return;
     }
     setUploading(true);
@@ -82,7 +104,12 @@ export default function AccountPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
-      await update({ image: data.user.image });
+      // Update session with SAFE (non-data-URL) values only
+      await update({
+        image: data.user.image,
+        hasCustomImage: data.user.hasCustomImage,
+      });
+      setAvatarUrl(dataUrl);
       setProfileOk("Profile photo updated");
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : "Upload failed");
@@ -119,9 +146,7 @@ export default function AccountPage() {
   }
 
   const isAdmin = session?.user?.role === "ADMIN";
-  const avatar =
-    session?.user?.image ||
-    (isAdmin ? "/logo.png" : null);
+  const avatar = avatarUrl || (isAdmin ? ADMIN_LOGO : null);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
@@ -200,7 +225,7 @@ export default function AccountPage() {
           <p className="text-xs text-[var(--muted)]">{session?.user?.email}</p>
           {isAdmin && <span className="badge badge-cyan mt-3">ADMIN</span>}
           <p className="mt-3 text-xs text-[var(--muted)]">
-            Tap the camera icon to add or change your profile photo.
+            Tap the camera icon to add or change your profile photo (max 600KB).
           </p>
         </div>
         <div className="card p-5">
@@ -271,7 +296,6 @@ export default function AccountPage() {
         </div>
       )}
 
-      {/* Danger zone — available to every customer */}
       <div className="card mt-10 border-red-500/20 p-6">
         <h2 className="mb-1 text-sm font-semibold text-red-400">Danger zone</h2>
         <p className="mb-4 text-sm text-[var(--muted)]">
