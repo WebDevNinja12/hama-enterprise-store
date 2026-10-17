@@ -1,22 +1,42 @@
 import Link from "next/link";
 
+const MAIN_SITE = "https://hama-enterprise-ng.vercel.app/index.html";
+
 export default function Footer() {
   return (
     <footer className="mt-auto border-t border-[var(--border)] bg-[var(--surface)]">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2 lg:col-span-1">
-            <div className="mb-4 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/15 text-sm font-bold text-cyan-400">
-                H
-              </div>
+            <a
+              href={MAIN_SITE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-4 flex items-center gap-2.5"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo.png"
+                alt="HAMA ENTERPRISE NG"
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-full bg-white object-contain p-0.5 ring-1 ring-cyan-500/30"
+              />
               <span className="text-sm font-bold tracking-wide text-[var(--heading)]">
                 HAMA ENTERPRISE NG
               </span>
-            </div>
+            </a>
             <p className="max-w-xs text-sm leading-relaxed text-[var(--muted)]">
               Next-generation hardware and conceptual gadgets. RC: 8827959
             </p>
+            <a
+              href={MAIN_SITE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-block text-sm text-cyan-400 hover:underline"
+            >
+              hama-enterprise-ng.vercel.app
+            </a>
           </div>
 
           <div>
@@ -67,9 +87,29 @@ export default function Footer() {
 
           <div>
             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[var(--heading)]">
-              Support
+              Company
             </p>
             <ul className="space-y-2 text-sm text-[var(--muted)]">
+              <li>
+                <a
+                  href={MAIN_SITE}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-cyan-400"
+                >
+                  Main website
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://hama-enterprise-ng.vercel.app/gallery.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-cyan-400"
+                >
+                  Gallery
+                </a>
+              </li>
               <li>
                 <a
                   href="mailto:support@hamaenterprise.ng"
@@ -86,7 +126,14 @@ export default function Footer() {
           <p className="text-xs text-[var(--muted)]">
             © {new Date().getFullYear()} Hama Enterprise NG. All rights reserved.
           </p>
-          <p className="text-xs text-[var(--muted)]">Built for the future · Nigeria</p>
+          <a
+            href={MAIN_SITE}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-cyan-400 hover:underline"
+          >
+            {MAIN_SITE.replace("https://", "")}
+          </a>
         </div>
       </div>
     </footer>

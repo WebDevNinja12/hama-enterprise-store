@@ -116,26 +116,19 @@ export default function AdminProductsPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (id.startsWith("seed-")) {
-      setError("Catalog seed products cannot be deleted here. Add a DB copy to manage them.");
-      return;
-    }
-    if (!confirm(`Delete product "${name}"?`)) return;
+    if (!confirm(`Remove product "${name}" from the store?`)) return;
     try {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Delete failed");
       setProducts((prev) => prev.filter((p) => p.id !== id));
+      setSuccess(`Removed "${name}"`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }
   }
 
   async function handleStockSave(id: string) {
-    if (id.startsWith("seed-")) {
-      setError("Seed catalog stock is fixed. Create the product in DB to manage stock.");
-      return;
-    }
     const raw = editingStock[id];
     if (raw === undefined) return;
     const stock = Math.max(0, parseInt(raw, 10) || 0);
@@ -147,15 +140,13 @@ export default function AdminProductsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
-      setProducts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, stock } : p))
-      );
+      setSuccess("Stock updated");
+      load();
       setEditingStock((s) => {
         const n = { ...s };
         delete n[id];
         return n;
       });
-      setSuccess("Stock updated");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Stock update failed");
     }
@@ -175,7 +166,7 @@ export default function AdminProductsPage() {
             All products
           </h1>
           <p className="text-sm text-[var(--muted)]">
-            Full catalog (store + admin-added) · out of stock · restock
+            Full control — add, restock, or remove any product
           </p>
         </div>
         <button
@@ -327,7 +318,6 @@ export default function AdminProductsPage() {
           {filtered.map((p) => {
             const out = p.stock <= 0;
             const low = p.stock > 0 && p.stock <= 5;
-            const isSeed = p.source === "seed" || p.id.startsWith("seed-");
             return (
               <div
                 key={p.id}
@@ -354,7 +344,6 @@ export default function AdminProductsPage() {
                     <p className="font-medium text-[var(--heading)]">{p.name}</p>
                     <p className="text-xs text-[var(--muted)]">
                       {p.category} · {p.brand}
-                      {isSeed ? " · catalog" : ""}
                     </p>
                     {out && (
                       <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-red-400">
@@ -369,52 +358,43 @@ export default function AdminProductsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  {!isSeed && (
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-[var(--muted)]">Stock</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="input h-9 w-20 py-1 text-sm"
-                        value={
-                          editingStock[p.id] !== undefined
-                            ? editingStock[p.id]
-                            : String(p.stock)
-                        }
-                        onChange={(e) =>
-                          setEditingStock((s) => ({
-                            ...s,
-                            [p.id]: e.target.value,
-                          }))
-                        }
-                      />
-                      {editingStock[p.id] !== undefined && (
-                        <button
-                          onClick={() => handleStockSave(p.id)}
-                          className="btn-primary px-3 py-1.5 text-xs"
-                        >
-                          Save
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {isSeed && (
-                    <span className="text-xs text-[var(--muted)]">
-                      Stock: {p.stock}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-[var(--muted)]">Stock</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="input h-9 w-20 py-1 text-sm"
+                      value={
+                        editingStock[p.id] !== undefined
+                          ? editingStock[p.id]
+                          : String(p.stock)
+                      }
+                      onChange={(e) =>
+                        setEditingStock((s) => ({
+                          ...s,
+                          [p.id]: e.target.value,
+                        }))
+                      }
+                    />
+                    {editingStock[p.id] !== undefined && (
+                      <button
+                        onClick={() => handleStockSave(p.id)}
+                        className="btn-primary px-3 py-1.5 text-xs"
+                      >
+                        Save
+                      </button>
+                    )}
+                  </div>
                   <p className="font-semibold text-cyan-400">
                     ${Number(p.price).toLocaleString()}
                   </p>
-                  {!isSeed && (
-                    <button
-                      onClick={() => handleDelete(p.id, p.name)}
-                      className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleDelete(p.id, p.name)}
+                    className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                    title="Remove product"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             );

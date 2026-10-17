@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Package, LogOut, User, Shield, Trash2 } from "lucide-react";
+import { Package, LogOut, User, Shield, Camera } from "lucide-react";
 
 type OrderItem = {
   id: string;
@@ -24,12 +24,13 @@ type Order = {
 };
 
 export default function AccountPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileOk, setProfileOk] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -51,24 +52,40 @@ export default function AccountPage() {
     })();
   }, [status]);
 
-  async function handleDeleteAccount() {
-    const ok = confirm(
-      "Delete your account permanently? This cannot be undone. Your orders history tied to this login will be removed with the account."
-    );
-    if (!ok) return;
-    const again = confirm("Are you sure? Type OK in the next step conceptually — this is final.");
-    if (!again) return;
-
-    setDeleting(true);
-    setDeleteError("");
+  async function onPickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setProfileError("Please choose an image file");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileError("Image must be under 2MB");
+      return;
+    }
+    setUploading(true);
+    setProfileError("");
+    setProfileOk("");
     try {
-      const res = await fetch("/api/account", { method: "DELETE" });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Could not read file"));
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to delete");
-      await signOut({ callbackUrl: "/" });
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      await update({ image: data.user.image });
+      setProfileOk("Profile photo updated");
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
-      setDeleting(false);
+      setProfileError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -81,16 +98,56 @@ export default function AccountPage() {
   }
 
   const isAdmin = session?.user?.role === "ADMIN";
+  const avatar =
+    session?.user?.image ||
+    (isAdmin ? "/logo.png" : null);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="section-label mb-1">My account</p>
-          <h1 className="text-3xl font-bold text-[var(--heading)]">
-            {session?.user?.name || "Your account"}
-          </h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">{session?.user?.email}</p>
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div className="h-16 w-16 overflow-hidden rounded-full bg-[var(--surface)] ring-2 ring-cyan-500/30">
+              {avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatar}
+                  alt="Profile"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-cyan-400">
+                  <User className="h-7 w-7" />
+                </div>
+              )}
+            </div>
+            <label className="absolute -bottom-1 -right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-cyan-500 text-black shadow hover:bg-cyan-400">
+              <Camera className="h-4 w-4" />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onPickPhoto}
+                disabled={uploading}
+              />
+            </label>
+          </div>
+          <div>
+            <p className="section-label mb-1">My account</p>
+            <h1 className="text-3xl font-bold text-[var(--heading)]">
+              {session?.user?.name || "Your account"}
+            </h1>
+            <p className="mt-1 text-sm text-[var(--muted)]">{session?.user?.email}</p>
+            {uploading && (
+              <p className="text-xs text-cyan-400">Uploading photo...</p>
+            )}
+            {profileOk && (
+              <p className="text-xs text-emerald-400">{profileOk}</p>
+            )}
+            {profileError && (
+              <p className="text-xs text-red-400">{profileError}</p>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {isAdmin && (
@@ -121,6 +178,9 @@ export default function AccountPage() {
           </p>
           <p className="text-xs text-[var(--muted)]">{session?.user?.email}</p>
           {isAdmin && <span className="badge badge-cyan mt-3">ADMIN</span>}
+          <p className="mt-3 text-xs text-[var(--muted)]">
+            Tap the camera icon to add or change your profile photo.
+          </p>
         </div>
         <div className="card p-5">
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
@@ -190,24 +250,54 @@ export default function AccountPage() {
         </div>
       )}
 
-      <div className="card border-red-500/20 p-6">
-        <h2 className="mb-1 text-sm font-semibold text-red-400">Danger zone</h2>
-        <p className="mb-4 text-sm text-[var(--muted)]">
-          Delete your account permanently. Accounts with no activity for 6 months
-          are also removed automatically.
-        </p>
-        {deleteError && (
-          <p className="mb-3 text-sm text-red-400">{deleteError}</p>
-        )}
-        <button
-          onClick={handleDeleteAccount}
-          disabled={deleting}
-          className="inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/25 disabled:opacity-50"
-        >
-          <Trash2 className="h-4 w-4" />
-          {deleting ? "Deleting..." : "Delete my account"}
-        </button>
-      </div>
+      {/* Danger zone: ADMIN only */}
+      {isAdmin && (
+        <AdminDangerZone />
+      )}
+    </div>
+  );
+}
+
+function AdminDangerZone() {
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  async function handleDeleteAccount() {
+    const ok = confirm(
+      "Delete this admin account permanently? This cannot be undone."
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch("/api/account", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete");
+      await signOut({ callbackUrl: "/" });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="card mt-10 border-red-500/20 p-6">
+      <h2 className="mb-1 text-sm font-semibold text-red-400">
+        Danger zone (admin only)
+      </h2>
+      <p className="mb-4 text-sm text-[var(--muted)]">
+        Delete your admin account permanently. Inactive accounts may also be
+        cleaned up automatically after 6 months.
+      </p>
+      {deleteError && <p className="mb-3 text-sm text-red-400">{deleteError}</p>}
+      <button
+        onClick={handleDeleteAccount}
+        disabled={deleting}
+        className="inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/25 disabled:opacity-50"
+      >
+        {deleting ? "Deleting..." : "Delete my account"}
+      </button>
     </div>
   );
 }

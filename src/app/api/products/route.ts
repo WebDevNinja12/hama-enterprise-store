@@ -58,7 +58,6 @@ function mapDbProduct(p: {
   };
 }
 
-/** Public: published only. Admin: ?admin=1 returns DB + seed catalog products */
 export async function GET(req: NextRequest) {
   try {
     const adminFlag = req.nextUrl.searchParams.get("admin") === "1";
@@ -77,29 +76,35 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    const mapped = dbProducts.map(mapDbProduct);
+    const mapped = dbProducts
+      .filter((p) => (isAdmin ? true : p.published))
+      .map(mapDbProduct);
+
+    // Suppress seeds that exist in DB (including unpublished tombstones)
+    const dbSlugs = new Set(dbProducts.map((p) => p.slug));
+    const seeds = seedProducts
+      .filter((p) => !dbSlugs.has(p.slug))
+      .map((p) => ({
+        id: `seed-${p.id}`,
+        name: p.name,
+        slug: p.slug,
+        price: p.price,
+        compareAt: p.compareAt,
+        category: p.category,
+        brand: p.brand,
+        emoji: p.emoji || "📦",
+        image: p.image,
+        stock: p.stock,
+        rating: p.rating,
+        description: p.description,
+        published: true,
+        source: "seed" as const,
+      }));
 
     if (isAdmin) {
-      const dbSlugs = new Set(mapped.map((p) => p.slug));
-      const seeds = seedProducts
-        .filter((p) => !dbSlugs.has(p.slug))
-        .map((p) => ({
-          id: `seed-${p.id}`,
-          name: p.name,
-          slug: p.slug,
-          price: p.price,
-          compareAt: p.compareAt,
-          category: p.category,
-          brand: p.brand,
-          emoji: p.emoji || "📦",
-          image: p.image,
-          stock: p.stock,
-          rating: p.rating,
-          description: p.description,
-          published: true,
-          source: "seed" as const,
-        }));
-      const all = [...mapped, ...seeds];
+      // Admin sees published DB + seeds not tombstoned; also show unpublished DB as hidden
+      const visibleDb = mapped;
+      const all = [...visibleDb, ...seeds];
       return NextResponse.json({
         products: all,
         outOfStock: all.filter((p) => p.stock <= 0).length,
@@ -107,10 +112,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Public store: published DB + remaining seeds
+    const publicList = [
+      ...mapped.filter((p) => p.published),
+      ...seeds,
+    ];
     return NextResponse.json({
-      products: mapped,
-      outOfStock: mapped.filter((p) => p.stock <= 0).length,
-      lowStock: mapped.filter((p) => p.stock > 0 && p.stock <= 5).length,
+      products: publicList,
+      outOfStock: publicList.filter((p) => p.stock <= 0).length,
+      lowStock: publicList.filter((p) => p.stock > 0 && p.stock <= 5).length,
     });
   } catch (err) {
     console.error("List products error:", err);

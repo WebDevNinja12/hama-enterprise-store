@@ -22,6 +22,8 @@ declare module "next-auth" {
   }
 }
 
+const ADMIN_LOGO = "/logo.png";
+
 const providers: Provider[] = [
   Credentials({
     name: "credentials",
@@ -38,7 +40,6 @@ const providers: Provider[] = [
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user || !user.password) return null;
 
-      // Require email verification for normal users (admins always allowed)
       if (!user.emailVerified && user.role !== "ADMIN") {
         throw new Error("EMAIL_NOT_VERIFIED");
       }
@@ -51,11 +52,16 @@ const providers: Provider[] = [
         data: { lastActiveAt: new Date() },
       });
 
+      const image =
+        user.role === "ADMIN"
+          ? user.image || ADMIN_LOGO
+          : user.image;
+
       return {
         id: user.id,
         email: user.email,
         name: user.name,
-        image: user.image,
+        image,
         role: user.role,
       };
     },
@@ -77,13 +83,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: "/login" },
   providers,
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: Role }).role ?? "USER";
+        token.picture = user.image;
+        token.name = user.name;
       }
+
+      // Refresh profile from client update
+      if (trigger === "update" && session) {
+        if (session.name !== undefined) token.name = session.name;
+        if (session.image !== undefined) token.picture = session.image;
+      }
+
       if (token.id) {
         try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { role: true, image: true, name: true },
+          });
+          if (dbUser) {
+            token.role = dbUser.role;
+            token.name = dbUser.name;
+            token.picture =
+              dbUser.role === "ADMIN"
+                ? dbUser.image || ADMIN_LOGO
+                : dbUser.image;
+          }
           await prisma.user.update({
             where: { id: token.id as string },
             data: { lastActiveAt: new Date() },
@@ -98,6 +125,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.id = (token.id as string) || "";
         session.user.role = (token.role as Role) || "USER";
+        session.user.name = (token.name as string) || session.user.name;
+        session.user.image =
+          (token.picture as string) ||
+          (token.role === "ADMIN" ? ADMIN_LOGO : null);
       }
       return session;
     },
