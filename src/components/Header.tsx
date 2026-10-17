@@ -16,6 +16,7 @@ import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/CartContext";
 import { useTheme } from "@/context/ThemeContext";
+import Logo from "@/components/Logo";
 
 const navLinks = [
   { href: "/", label: "Store" },
@@ -35,14 +36,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-2xl">
       <div className="mx-auto flex h-[4.25rem] max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400/30 to-blue-500/20 text-sm font-bold text-cyan-400 ring-1 ring-cyan-500/20">
-            H
-          </div>
-          <span className="hidden text-sm font-bold tracking-wide text-[var(--heading)] sm:block">
-            HAMA ENTERPRISE NG
-          </span>
-        </Link>
+        <Logo />
 
         <div className="relative mx-2 hidden flex-1 max-w-sm md:block lg:mx-6">
           <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
@@ -139,24 +133,6 @@ export default function Header() {
             >
               {session ? "My account" : "Sign in"}
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                toggleTheme();
-                setMobileOpen(false);
-              }}
-              className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm text-[var(--muted)]"
-            >
-              {theme === "dark" ? (
-                <>
-                  <Sun className="h-4 w-4" /> Light mode
-                </>
-              ) : (
-                <>
-                  <Moon className="h-4 w-4" /> Dark mode
-                </>
-              )}
-            </button>
           </nav>
         </div>
       )}

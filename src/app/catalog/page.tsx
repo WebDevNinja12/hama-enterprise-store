@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Star, ShoppingCart } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { products as seedProducts, type Product } from "@/lib/products";
+import { products as seedProducts, productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
 
 export default function CatalogPage() {
@@ -19,7 +19,7 @@ export default function CatalogPage() {
       .then((r) => r.json())
       .then((data) => {
         const list = (data.products || []).map(
-          (p: Product & { id: string }) => ({
+          (p: Product & { id: string; image?: string }) => ({
             id: p.id,
             name: p.name,
             slug: p.slug,
@@ -29,7 +29,7 @@ export default function CatalogPage() {
             category: p.category,
             brand: p.brand || "HAMA",
             description: p.description || "",
-            emoji: p.emoji || "📦",
+            image: p.image || productImage(p),
             stock: p.stock ?? 0,
           })
         );
@@ -62,44 +62,22 @@ export default function CatalogPage() {
   function handleAdd(product: Product) {
     if (product.stock <= 0) {
       flash(product.id, "Out of stock — max reached");
-      fetch("/api/stock/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productName: product.name,
-          productId: product.id,
-          stock: 0,
-          reason: "out_of_stock",
-        }),
-      }).catch(() => {});
       return;
     }
-
     const result = addItem(product);
     if (!result.ok) {
-      if (result.reason === "max_reached") {
-        flash(product.id, `Max stock reached (${product.stock} available)`);
-        fetch("/api/stock/notify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            productName: product.name,
-            productId: product.id,
-            stock: product.stock,
-            reason: "max_reached",
-          }),
-        }).catch(() => {});
-      } else {
-        flash(product.id, "Out of stock");
-      }
+      flash(
+        product.id,
+        result.reason === "max_reached"
+          ? `Max stock reached (${product.stock} available)`
+          : "Out of stock"
+      );
       return;
     }
-
-    if (result.atMax) {
-      flash(product.id, `Added — cart is at max (${product.stock})`);
-    } else {
-      flash(product.id, "Added to cart");
-    }
+    flash(
+      product.id,
+      result.atMax ? `Added — cart is at max (${product.stock})` : "Added to cart"
+    );
   }
 
   return (
@@ -137,11 +115,19 @@ export default function CatalogPage() {
           const inCart = getQtyInCart(p.id);
           const atMax = p.stock > 0 && inCart >= p.stock;
           const soldOut = p.stock <= 0;
+          const img = productImage(p);
 
           return (
             <div key={p.id} className="card group overflow-hidden">
               <Link href={`/product/${p.slug}`}>
-                <div className="relative flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-cyan-500/10 to-[var(--surface)] text-5xl">
+                <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img}
+                    alt={p.name}
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    loading="lazy"
+                  />
                   <span className="absolute left-3 top-3 badge badge-cyan text-[10px]">
                     {p.category.toUpperCase()}
                   </span>
@@ -155,7 +141,6 @@ export default function CatalogPage() {
                       MAX IN CART
                     </span>
                   )}
-                  {p.emoji}
                 </div>
               </Link>
               <div className="p-4">
@@ -174,34 +159,21 @@ export default function CatalogPage() {
                   {inCart > 0 ? ` · In cart: ${inCart}` : ""}
                 </p>
                 {message?.id === p.id && (
-                  <p
-                    className={`mb-2 text-xs font-medium ${
-                      message.text.includes("Max") ||
-                      message.text.includes("Out")
-                        ? "text-amber-400"
-                        : "text-cyan-400"
-                    }`}
-                  >
+                  <p className="mb-2 text-xs font-medium text-cyan-400">
                     {message.text}
                   </p>
                 )}
                 <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-lg font-bold text-[var(--heading)]">
-                      ${p.price.toLocaleString()}
-                    </p>
-                  </div>
+                  <p className="text-lg font-bold text-[var(--heading)]">
+                    ${p.price.toLocaleString()}
+                  </p>
                   <button
                     onClick={() => handleAdd(p)}
                     disabled={soldOut || atMax}
                     className="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <ShoppingCart className="h-3.5 w-3.5" />
-                    {soldOut
-                      ? "Max reached"
-                      : atMax
-                        ? "Max in cart"
-                        : "Add"}
+                    {soldOut ? "Max reached" : atMax ? "Max in cart" : "Add"}
                   </button>
                 </div>
               </div>

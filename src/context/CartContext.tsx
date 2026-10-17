@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { Product } from "@/lib/products";
+import { productImage } from "@/lib/products";
 
 const CART_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const REMINDER_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
@@ -18,7 +19,7 @@ export type CartItem = {
   name: string;
   slug: string;
   price: number;
-  emoji: string;
+  image: string;
   quantity: number;
   stock: number;
   addedAt: number;
@@ -45,7 +46,7 @@ type CartContextValue = {
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
-const STORAGE_KEY = "hama-cart-v3";
+const STORAGE_KEY = "hama-cart-v4";
 
 function purgeExpired(list: CartItem[]): CartItem[] {
   const now = Date.now();
@@ -93,6 +94,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     let result: AddResult = { ok: true };
     const now = Date.now();
+    const image = productImage(product);
 
     setItems((prev) => {
       const cleaned = purgeExpired(prev);
@@ -115,7 +117,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (existing) {
         return cleaned.map((i) =>
           i.id === product.id
-            ? { ...i, quantity: nextQty, stock: maxStock }
+            ? { ...i, quantity: nextQty, stock: maxStock, image }
             : i
         );
       }
@@ -127,7 +129,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           name: product.name,
           slug: product.slug,
           price: product.price,
-          emoji: product.emoji,
+          image,
           quantity: nextQty,
           stock: maxStock,
           addedAt: now,
@@ -243,7 +245,6 @@ export function useCart() {
   return ctx;
 }
 
-/** Live countdown string — updates when parent re-renders every second */
 export function formatCountdown(ms: number): string {
   if (ms <= 0) return "Expired";
   const totalSec = Math.floor(ms / 1000);

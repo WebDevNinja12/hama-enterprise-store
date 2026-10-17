@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Star, ShoppingCart, ArrowLeft } from "lucide-react";
 import { useState } from "react";
-import { getProductBySlug } from "@/lib/products";
+import { getProductBySlug, productImage } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
 
 export default function ProductPage() {
@@ -19,7 +19,9 @@ export default function ProductPage() {
   if (!product) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20 text-center">
-        <h1 className="mb-4 text-2xl font-bold text-white">Product not found</h1>
+        <h1 className="mb-4 text-2xl font-bold text-[var(--heading)]">
+          Product not found
+        </h1>
         <Link href="/catalog" className="text-cyan-400 hover:underline">
           Back to catalog
         </Link>
@@ -40,6 +42,8 @@ export default function ProductPage() {
     router.push("/checkout");
   }
 
+  const img = productImage(product);
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <Link
@@ -50,13 +54,20 @@ export default function ProductPage() {
       </Link>
 
       <div className="grid gap-10 lg:grid-cols-2">
-        <div className="card flex aspect-square items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-8xl">
-          {product.emoji}
+        <div className="card overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={img}
+            alt={product.name}
+            className="aspect-square w-full object-cover"
+          />
         </div>
 
         <div>
           <span className="badge badge-cyan mb-3">{product.category}</span>
-          <h1 className="mb-2 text-3xl font-bold text-white">{product.name}</h1>
+          <h1 className="mb-2 text-3xl font-bold text-[var(--heading)]">
+            {product.name}
+          </h1>
           <p className="mb-1 text-sm text-[var(--muted)]">{product.brand}</p>
           <div className="mb-4 flex items-center gap-1 text-sm text-cyan-400">
             <Star className="h-4 w-4 fill-current" />
@@ -83,14 +94,14 @@ export default function ProductPage() {
             <div className="flex items-center rounded-lg border border-[var(--border)]">
               <button
                 onClick={() => setQty(Math.max(1, qty - 1))}
-                className="px-3 py-2 text-white hover:bg-white/5"
+                className="px-3 py-2 text-[var(--heading)] hover:bg-white/5"
               >
                 −
               </button>
-              <span className="w-10 text-center text-white">{qty}</span>
+              <span className="w-10 text-center text-[var(--heading)]">{qty}</span>
               <button
                 onClick={() => setQty(Math.min(99, qty + 1))}
-                className="px-3 py-2 text-white hover:bg-white/5"
+                className="px-3 py-2 text-[var(--heading)] hover:bg-white/5"
               >
                 +
               </button>

@@ -8,7 +8,9 @@ export type Product = {
   category: string;
   brand: string;
   description: string;
-  emoji: string;
+  /** @deprecated use image */
+  emoji?: string;
+  image: string;
   stock: number;
 };
 
@@ -24,7 +26,8 @@ export const products: Product[] = [
     brand: "Nexus Core",
     description:
       "Neural-interface headset with sub-millisecond latency, spatial audio, and adaptive noise cancelation for immersive work and play.",
-    emoji: "\ud83e\udde0",
+    image:
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80",
     stock: 24,
   },
   {
@@ -37,7 +40,8 @@ export const products: Product[] = [
     brand: "AetherDynamics",
     description:
       "Next-gen mixed reality optics with 8K per-eye micro OLED and all-day battery for spatial computing.",
-    emoji: "\ud83d\udc41\ufe0f",
+    image:
+      "https://images.unsplash.com/photo-1622979135225-d2ba269cf1ac?auto=format&fit=crop&w=800&q=80",
     stock: 18,
   },
   {
@@ -50,7 +54,8 @@ export const products: Product[] = [
     brand: "Vanguard Labs",
     description:
       "Desktop quantum processing unit for advanced simulation, cryptography, and AI workloads.",
-    emoji: "\u269b\ufe0f",
+    image:
+      "https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?auto=format&fit=crop&w=800&q=80",
     stock: 6,
   },
   {
@@ -63,7 +68,8 @@ export const products: Product[] = [
     brand: "Nexus Core",
     description:
       "Powered arm bracer with haptic feedback and strength assist for industrial and field use.",
-    emoji: "\ud83e\uddbe",
+    image:
+      "https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=800&q=80",
     stock: 12,
   },
   {
@@ -76,7 +82,8 @@ export const products: Product[] = [
     brand: "AetherDynamics",
     description:
       "Compact neural interface node for focus, sleep tracking, and ambient computing control.",
-    emoji: "\ud83d\udce1",
+    image:
+      "https://images.unsplash.com/photo-1558082410-8d2cd8c8f0e4?auto=format&fit=crop&w=800&q=80",
     stock: 40,
   },
   {
@@ -89,7 +96,8 @@ export const products: Product[] = [
     brand: "Vanguard Labs",
     description:
       "Smart contact lenses with AR overlay, health sensors, and discreet always-on display.",
-    emoji: "\ud83d\udc53",
+    image:
+      "https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=800&q=80",
     stock: 15,
   },
   {
@@ -102,7 +110,8 @@ export const products: Product[] = [
     brand: "HAMA",
     description:
       "Spatial earbuds with neural noise cancelation and adaptive EQ for studio-grade listening.",
-    emoji: "\ud83c\udfa7",
+    image:
+      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80",
     stock: 55,
   },
   {
@@ -115,7 +124,8 @@ export const products: Product[] = [
     brand: "HAMA",
     description:
       "Smart ring with biometrics, payments, and two-week battery life in a titanium shell.",
-    emoji: "\ud83d\udc8d",
+    image:
+      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=800&q=80",
     stock: 30,
   },
 ];
@@ -126,4 +136,11 @@ export function getProductBySlug(slug: string) {
 
 export function getProductById(id: string) {
   return products.find((p) => p.id === id);
+}
+
+export function productImage(p: { image?: string; emoji?: string; name?: string }) {
+  return (
+    p.image ||
+    `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80`
+  );
 }

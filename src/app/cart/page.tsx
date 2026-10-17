@@ -18,7 +18,6 @@ export default function CartPage() {
   } = useCart();
   const [, setTick] = useState(0);
 
-  // Live countdown — refresh every 1 second
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(t);
@@ -31,9 +30,6 @@ export default function CartPage() {
         <h1 className="mb-2 text-2xl font-bold text-[var(--heading)]">
           Your cart is empty
         </h1>
-        <p className="mb-2 text-sm text-[var(--muted)]">
-          Items stay in your cart for up to 7 days.
-        </p>
         <Link href="/catalog" className="btn-primary inline-flex px-6 py-3 text-sm">
           Browse catalog
         </Link>
@@ -51,8 +47,7 @@ export default function CartPage() {
         <div>
           <h1 className="text-3xl font-bold text-[var(--heading)]">Cart</h1>
           <p className="text-sm text-[var(--muted)]">
-            {totalItems} item{totalItems === 1 ? "" : "s"} · each item expires 7
-            days after add (live countdown)
+            {totalItems} item{totalItems === 1 ? "" : "s"}
           </p>
         </div>
         <button
@@ -74,8 +69,13 @@ export default function CartPage() {
                 key={item.id}
                 className="card flex flex-wrap items-center gap-4 p-4"
               >
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--surface)] text-3xl">
-                  {item.emoji}
+                <div className="h-16 w-16 overflow-hidden rounded-xl bg-[var(--surface)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    className="h-full w-full object-cover"
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <Link
@@ -94,17 +94,12 @@ export default function CartPage() {
                   >
                     <Clock className="h-3.5 w-3.5 shrink-0" />
                     {formatCountdown(ms)}
-                    {urgent && (
-                      <span className="font-sans font-medium">
-                        · checkout soon
-                      </span>
-                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => updateQty(item.id, item.quantity - 1)}
-                    className="rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted)] hover:text-[var(--heading)]"
+                    className="rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted)]"
                   >
                     <Minus className="h-4 w-4" />
                   </button>
@@ -113,7 +108,7 @@ export default function CartPage() {
                   </span>
                   <button
                     onClick={() => updateQty(item.id, item.quantity + 1)}
-                    className="rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted)] hover:text-[var(--heading)]"
+                    className="rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted)]"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -139,9 +134,7 @@ export default function CartPage() {
               </div>
               <div className="flex justify-between">
                 <span>Shipping</span>
-                <span className={shipping === 0 ? "text-cyan-400" : ""}>
-                  {shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}
-                </span>
+                <span>{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span>
               </div>
               <div className="flex justify-between">
                 <span>Tax (est.)</span>
