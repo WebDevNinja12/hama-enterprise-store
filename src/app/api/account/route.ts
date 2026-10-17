@@ -11,7 +11,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const data: { name?: string; image?: string | null } = {};
+    const data: { name?: string | null; image?: string | null } = {};
 
     if (typeof body.name === "string") {
       data.name = body.name.trim().slice(0, 80) || null;
@@ -41,18 +41,12 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-/** Delete own account — ADMIN only (danger zone is admin-only) */
+/** Delete own account — available to every signed-in customer */
 export async function DELETE() {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Sign in required" }, { status: 401 });
-    }
-    if (session.user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "Only administrators can use account deletion from the panel" },
-        { status: 403 }
-      );
     }
 
     await prisma.user.delete({ where: { id: session.user.id } });

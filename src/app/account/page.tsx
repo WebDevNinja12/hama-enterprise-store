@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Package, LogOut, User, Shield, Camera } from "lucide-react";
+import { Package, LogOut, User, Shield, Camera, Trash2 } from "lucide-react";
 
 type OrderItem = {
   id: string;
@@ -31,6 +31,8 @@ export default function AccountPage() {
   const [uploading, setUploading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileOk, setProfileOk] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -86,6 +88,25 @@ export default function AccountPage() {
       setProfileError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    const ok = confirm(
+      "Delete your account permanently? This cannot be undone."
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch("/api/account", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete");
+      await signOut({ callbackUrl: "/" });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+      setDeleting(false);
     }
   }
 
@@ -250,54 +271,25 @@ export default function AccountPage() {
         </div>
       )}
 
-      {/* Danger zone: ADMIN only */}
-      {isAdmin && (
-        <AdminDangerZone />
-      )}
-    </div>
-  );
-}
-
-function AdminDangerZone() {
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-
-  async function handleDeleteAccount() {
-    const ok = confirm(
-      "Delete this admin account permanently? This cannot be undone."
-    );
-    if (!ok) return;
-
-    setDeleting(true);
-    setDeleteError("");
-    try {
-      const res = await fetch("/api/account", { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to delete");
-      await signOut({ callbackUrl: "/" });
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
-      setDeleting(false);
-    }
-  }
-
-  return (
-    <div className="card mt-10 border-red-500/20 p-6">
-      <h2 className="mb-1 text-sm font-semibold text-red-400">
-        Danger zone (admin only)
-      </h2>
-      <p className="mb-4 text-sm text-[var(--muted)]">
-        Delete your admin account permanently. Inactive accounts may also be
-        cleaned up automatically after 6 months.
-      </p>
-      {deleteError && <p className="mb-3 text-sm text-red-400">{deleteError}</p>}
-      <button
-        onClick={handleDeleteAccount}
-        disabled={deleting}
-        className="inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/25 disabled:opacity-50"
-      >
-        {deleting ? "Deleting..." : "Delete my account"}
-      </button>
+      {/* Danger zone — available to every customer */}
+      <div className="card mt-10 border-red-500/20 p-6">
+        <h2 className="mb-1 text-sm font-semibold text-red-400">Danger zone</h2>
+        <p className="mb-4 text-sm text-[var(--muted)]">
+          Delete your account permanently. Accounts with no activity for 6 months
+          are also removed automatically.
+        </p>
+        {deleteError && (
+          <p className="mb-3 text-sm text-red-400">{deleteError}</p>
+        )}
+        <button
+          onClick={handleDeleteAccount}
+          disabled={deleting}
+          className="inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/25 disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" />
+          {deleting ? "Deleting..." : "Delete my account"}
+        </button>
+      </div>
     </div>
   );
 }
