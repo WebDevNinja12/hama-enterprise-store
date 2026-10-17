@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Image as ImageIcon, Video, Play } from "lucide-react";
+import { Image as ImageIcon, Play } from "lucide-react";
 
 type MediaItem = {
   id: string;
@@ -9,6 +9,7 @@ type MediaItem = {
   type: "IMAGE" | "VIDEO";
   url: string;
   poster: string | null;
+  narration: string | null;
 };
 
 function isYouTube(url: string) {
@@ -52,7 +53,7 @@ export default function GalleryPage() {
           Images & Videos
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Media published by HAMA ENTERPRISE NG
+          Browse media with full narration from HAMA ENTERPRISE NG
         </p>
       </div>
 
@@ -64,15 +65,17 @@ export default function GalleryPage() {
           <p className="text-[var(--muted)]">No gallery items yet.</p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
-            <button
+            <div
               key={item.id}
-              type="button"
-              onClick={() => setActive(item)}
               className="card group overflow-hidden text-left transition hover:border-cyan-500/40"
             >
-              <div className="relative aspect-video bg-[var(--surface)]">
+              <button
+                type="button"
+                onClick={() => setActive(item)}
+                className="relative block w-full aspect-video bg-[var(--surface)] text-left"
+              >
                 {item.type === "IMAGE" ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -80,9 +83,6 @@ export default function GalleryPage() {
                     alt={item.title}
                     className="h-full w-full object-cover"
                     loading="lazy"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
                   />
                 ) : isYouTube(item.url) ? (
                   <div className="relative h-full w-full">
@@ -95,7 +95,7 @@ export default function GalleryPage() {
                       alt={item.title}
                       className="h-full w-full object-cover"
                     />
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/35">
                       <Play className="h-12 w-12 text-white" />
                     </span>
                   </div>
@@ -112,25 +112,49 @@ export default function GalleryPage() {
                 <span className="absolute left-2 top-2 badge badge-cyan text-[10px]">
                   {item.type === "IMAGE" ? "IMAGE" : "VIDEO"}
                 </span>
+              </button>
+
+              <div className="p-4">
+                <p className="font-semibold text-[var(--heading)]">{item.title}</p>
+                {item.narration ? (
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                    {item.narration}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-[var(--muted)]">No narration</p>
+                )}
+                {item.type === "VIDEO" && !isYouTube(item.url) && (
+                  <video
+                    src={item.url}
+                    poster={item.poster || undefined}
+                    controls
+                    playsInline
+                    className="mt-3 w-full rounded-lg bg-black"
+                    preload="metadata"
+                  />
+                )}
+                {item.type === "VIDEO" && isYouTube(item.url) && (
+                  <button
+                    type="button"
+                    onClick={() => setActive(item)}
+                    className="mt-3 text-sm font-medium text-cyan-400 hover:underline"
+                  >
+                    Play video
+                  </button>
+                )}
               </div>
-              <div className="p-3">
-                <p className="font-medium text-[var(--heading)] group-hover:text-cyan-400">
-                  {item.title}
-                </p>
-              </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
 
-      {/* Lightbox */}
       {active && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
           onClick={() => setActive(null)}
         >
           <div
-            className="relative max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-[var(--card)]"
+            className="relative max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-[var(--card)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
@@ -143,17 +167,17 @@ export default function GalleryPage() {
                 Close
               </button>
             </div>
-            <div className="max-h-[80vh] overflow-auto p-2">
+            <div className="max-h-[80vh] overflow-auto p-3">
               {active.type === "IMAGE" ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={active.url}
                   alt={active.title}
-                  className="mx-auto max-h-[75vh] w-auto max-w-full object-contain"
+                  className="mx-auto max-h-[55vh] w-auto max-w-full object-contain"
                 />
               ) : isYouTube(active.url) ? (
                 <iframe
-                  src={youtubeEmbed(active.url)}
+                  src={`${youtubeEmbed(active.url)}?autoplay=1`}
                   title={active.title}
                   className="aspect-video w-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -165,8 +189,19 @@ export default function GalleryPage() {
                   poster={active.poster || undefined}
                   controls
                   autoPlay
-                  className="mx-auto max-h-[75vh] w-full"
+                  playsInline
+                  className="mx-auto max-h-[55vh] w-full"
                 />
+              )}
+              {active.narration && (
+                <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                    Narration
+                  </p>
+                  <p className="text-sm leading-relaxed text-[var(--heading)]">
+                    {active.narration}
+                  </p>
+                </div>
               )}
             </div>
           </div>

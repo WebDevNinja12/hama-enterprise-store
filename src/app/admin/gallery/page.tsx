@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Image as ImageIcon, Video, Plus, Trash2, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft } from "lucide-react";
 
 type MediaItem = {
   id: string;
@@ -10,11 +10,12 @@ type MediaItem = {
   type: "IMAGE" | "VIDEO";
   url: string;
   poster: string | null;
+  narration: string | null;
   published: boolean;
   sortOrder: number;
 };
 
-const MAX_FILE_BYTES = 2.5 * 1024 * 1024; // ~2.5MB for data URLs
+const MAX_FILE_BYTES = 2.5 * 1024 * 1024;
 
 export default function AdminGalleryPage() {
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -26,6 +27,7 @@ export default function AdminGalleryPage() {
     type: "IMAGE" as "IMAGE" | "VIDEO",
     url: "",
     poster: "",
+    narration: "",
     published: true,
   });
 
@@ -51,7 +53,7 @@ export default function AdminGalleryPage() {
       if (file.size > MAX_FILE_BYTES) {
         reject(
           new Error(
-            `File too large (max ~2.5MB). Host the file online and paste the URL instead.`
+            "File too large (max ~2.5MB). Host online and paste the URL instead."
           )
         );
         return;
@@ -72,13 +74,14 @@ export default function AdminGalleryPage() {
     setError("");
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      setForm((f) => ({ ...f, [field]: dataUrl }));
       if (field === "url") {
         if (file.type.startsWith("video/")) {
           setForm((f) => ({ ...f, type: "VIDEO", url: dataUrl }));
-        } else if (file.type.startsWith("image/")) {
+        } else {
           setForm((f) => ({ ...f, type: "IMAGE", url: dataUrl }));
         }
+      } else {
+        setForm((f) => ({ ...f, poster: dataUrl }));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -98,28 +101,25 @@ export default function AdminGalleryPage() {
           type: form.type,
           url: form.url,
           poster: form.poster || null,
+          narration: form.narration || null,
           published: form.published,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save");
-      setForm({ title: "", type: "IMAGE", url: "", poster: "", published: true });
+      setForm({
+        title: "",
+        type: "IMAGE",
+        url: "",
+        poster: "",
+        narration: "",
+        published: true,
+      });
       await loadItems();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this media item?")) return;
-    try {
-      const res = await fetch(`/api/gallery?id=${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Delete failed");
-      await loadItems();
-    } catch {
-      setError("Failed to delete item");
     }
   }
 
@@ -135,7 +135,7 @@ export default function AdminGalleryPage() {
         Gallery media
       </h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
-        Upload a file or paste a direct image/video URL. Published items show on{" "}
+        Add images/videos with a short narration for customers. View on{" "}
         <Link href="/gallery" className="text-cyan-400 hover:underline">
           /gallery
         </Link>
@@ -178,6 +178,17 @@ export default function AdminGalleryPage() {
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs text-[var(--muted)]">
+              Narration (shown to customers)
+            </label>
+            <textarea
+              className="input min-h-[88px]"
+              value={form.narration}
+              onChange={(e) => setForm({ ...form, narration: e.target.value })}
+              placeholder="Describe what the customer is seeing — story, product story, project notes..."
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs text-[var(--muted)]">
               Media URL or upload
             </label>
             <input
@@ -205,6 +216,7 @@ export default function AdminGalleryPage() {
                   <video
                     src={form.url}
                     controls
+                    playsInline
                     className="max-h-48 w-full bg-black/40"
                   />
                 )}
@@ -281,27 +293,22 @@ export default function AdminGalleryPage() {
                       src={item.url}
                       poster={item.poster || undefined}
                       controls
+                      playsInline
                       className="h-full w-full object-cover"
                       preload="metadata"
                     />
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-2 p-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-[var(--heading)]">
-                      {item.title}
+                <div className="p-3">
+                  <p className="font-medium text-[var(--heading)]">{item.title}</p>
+                  <p className="text-xs text-[var(--muted)]">
+                    {item.type} · {item.published ? "Published" : "Draft"}
+                  </p>
+                  {item.narration && (
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                      {item.narration}
                     </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {item.type} · {item.published ? "Published" : "Draft"}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  )}
                 </div>
               </div>
             ))}

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
@@ -12,7 +12,6 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-/** Public: published only. Admin: ?admin=1 all items */
 export async function GET(req: NextRequest) {
   try {
     const adminFlag = req.nextUrl.searchParams.get("admin") === "1";
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { title, type, url, poster, published, sortOrder } = body;
+    const { title, type, url, poster, narration, published, sortOrder } = body;
 
     if (!title || !type || !url) {
       return NextResponse.json(
@@ -69,7 +68,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Guard oversized data URLs
     if (typeof url === "string" && url.startsWith("data:") && url.length > 3_500_000) {
       return NextResponse.json(
         { error: "File too large. Use a smaller file or external URL." },
@@ -83,6 +81,7 @@ export async function POST(req: NextRequest) {
         type,
         url: String(url),
         poster: poster ? String(poster) : null,
+        narration: narration ? String(narration).trim() : null,
         published: published !== false,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
       },
@@ -93,36 +92,6 @@ export async function POST(req: NextRequest) {
     console.error("Gallery POST error:", error);
     return NextResponse.json(
       { error: "Failed to create gallery item" },
-      { status: 500, headers: corsHeaders }
-    );
-  }
-}
-
-export async function DELETE(req: NextRequest) {
-  try {
-    const session = await auth();
-    if (!session?.user?.id || session.user.role !== "ADMIN") {
-      return NextResponse.json(
-        { error: "Admin access required" },
-        { status: 403, headers: corsHeaders }
-      );
-    }
-
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    if (!id) {
-      return NextResponse.json(
-        { error: "id is required" },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    await prisma.galleryMedia.delete({ where: { id } });
-    return NextResponse.json({ ok: true }, { headers: corsHeaders });
-  } catch (error) {
-    console.error("Gallery DELETE error:", error);
-    return NextResponse.json(
-      { error: "Failed to delete gallery item" },
       { status: 500, headers: corsHeaders }
     );
   }
