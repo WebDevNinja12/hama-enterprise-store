@@ -12,6 +12,7 @@ const updateSchema = z.object({
   category: z.string().min(1).optional(),
   brand: z.string().optional(),
   emoji: z.string().optional(),
+  imageUrl: z.string().url().optional().nullable().or(z.literal("")),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -31,7 +32,13 @@ export async function PATCH(
     const body = await req.json();
     const data = updateSchema.parse(body);
 
-    // Seed products: promote to DB then update
+    const imageUrl =
+      data.imageUrl === undefined
+        ? undefined
+        : data.imageUrl && String(data.imageUrl).trim()
+          ? String(data.imageUrl).trim()
+          : null;
+
     if (id.startsWith("seed-")) {
       const seedId = id.replace("seed-", "");
       const seed = seedProducts.find((p) => p.id === seedId);
@@ -44,6 +51,7 @@ export async function PATCH(
           where: { id: existing.id },
           data: {
             ...data,
+            ...(imageUrl !== undefined ? { imageUrl } : {}),
             ...(data.name ? { name: data.name.trim() } : {}),
             ...(data.description ? { description: data.description.trim() } : {}),
             ...(data.category ? { category: data.category.trim() } : {}),
@@ -61,6 +69,7 @@ export async function PATCH(
           category: data.category?.trim() || seed.category,
           brand: data.brand || seed.brand,
           emoji: data.emoji || "📦",
+          imageUrl: imageUrl ?? seed.image ?? null,
           stock: data.stock ?? seed.stock,
           rating: data.rating ?? seed.rating,
           published: data.published ?? true,
@@ -73,6 +82,7 @@ export async function PATCH(
       where: { id },
       data: {
         ...data,
+        ...(imageUrl !== undefined ? { imageUrl } : {}),
         ...(data.name ? { name: data.name.trim() } : {}),
         ...(data.description ? { description: data.description.trim() } : {}),
         ...(data.category ? { category: data.category.trim() } : {}),
@@ -98,7 +108,6 @@ export async function DELETE(
 
     const { id } = await context.params;
 
-    // Remove catalog seed product by writing an unpublished tombstone
     if (id.startsWith("seed-")) {
       const seedId = id.replace("seed-", "");
       const seed = seedProducts.find((p) => p.id === seedId);

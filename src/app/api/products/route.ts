@@ -20,6 +20,7 @@ const productSchema = z.object({
   category: z.string().min(1),
   brand: z.string().optional(),
   emoji: z.string().optional(),
+  imageUrl: z.string().url().optional().nullable().or(z.literal("")),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -35,6 +36,7 @@ function mapDbProduct(p: {
   category: string;
   brand: string;
   emoji: string;
+  imageUrl?: string | null;
   stock: number;
   rating: number;
   description: string;
@@ -49,7 +51,8 @@ function mapDbProduct(p: {
     category: p.category,
     brand: p.brand,
     emoji: p.emoji,
-    image: undefined as string | undefined,
+    image: p.imageUrl || undefined,
+    imageUrl: p.imageUrl || undefined,
     stock: p.stock,
     rating: p.rating,
     description: p.description,
@@ -76,11 +79,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    const mapped = dbProducts
-      .filter((p) => (isAdmin ? true : p.published))
-      .map(mapDbProduct);
-
-    // Suppress seeds that exist in DB (including unpublished tombstones)
+    const mapped = dbProducts.map(mapDbProduct);
     const dbSlugs = new Set(dbProducts.map((p) => p.slug));
     const seeds = seedProducts
       .filter((p) => !dbSlugs.has(p.slug))
@@ -94,6 +93,7 @@ export async function GET(req: NextRequest) {
         brand: p.brand,
         emoji: p.emoji || "📦",
         image: p.image,
+        imageUrl: p.image,
         stock: p.stock,
         rating: p.rating,
         description: p.description,
@@ -102,9 +102,7 @@ export async function GET(req: NextRequest) {
       }));
 
     if (isAdmin) {
-      // Admin sees published DB + seeds not tombstoned; also show unpublished DB as hidden
-      const visibleDb = mapped;
-      const all = [...visibleDb, ...seeds];
+      const all = [...mapped, ...seeds];
       return NextResponse.json({
         products: all,
         outOfStock: all.filter((p) => p.stock <= 0).length,
@@ -112,7 +110,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Public store: published DB + remaining seeds
     const publicList = [
       ...mapped.filter((p) => p.published),
       ...seeds,
@@ -144,6 +141,11 @@ export async function POST(req: NextRequest) {
       slug = `${slug}-${Date.now().toString(36)}`;
     }
 
+    const imageUrl =
+      data.imageUrl && String(data.imageUrl).trim()
+        ? String(data.imageUrl).trim()
+        : null;
+
     const product = await prisma.storeProduct.create({
       data: {
         name: data.name.trim(),
@@ -154,6 +156,7 @@ export async function POST(req: NextRequest) {
         category: data.category.trim(),
         brand: data.brand?.trim() || "HAMA",
         emoji: data.emoji?.trim() || "📦",
+        imageUrl,
         stock: data.stock ?? 0,
         rating: data.rating ?? 5,
         published: data.published ?? true,
