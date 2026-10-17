@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft, Trash2 } from "lucide-react";
 
 type MediaItem = {
   id: string;
@@ -123,6 +123,20 @@ export default function AdminGalleryPage() {
     }
   }
 
+  async function handleDelete(id: string, title: string) {
+    if (!confirm(`Delete "${title}" from gallery?`)) return;
+    try {
+      const res = await fetch(`/api/gallery?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      setItems((prev) => prev.filter((i) => i.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
       <Link
@@ -135,11 +149,16 @@ export default function AdminGalleryPage() {
         Gallery media
       </h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
-        Upload media and write a <strong className="text-cyan-400">narration</strong>{" "}
-        customers will read on{" "}
-        <Link href="/gallery" className="text-cyan-400 hover:underline">
-          /gallery
-        </Link>
+        Manage media for the main website gallery. Narration is shown to visitors
+        on{" "}
+        <a
+          href="https://hama-enterprise-ng.vercel.app/gallery.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-cyan-400 hover:underline"
+        >
+          hama-enterprise-ng gallery
+        </a>
         .
       </p>
 
@@ -154,20 +173,16 @@ export default function AdminGalleryPage() {
           <Plus className="h-4 w-4 text-cyan-400" /> Add media + narration
         </h2>
 
-        {/* Narration first — highly visible */}
         <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-4">
           <label className="mb-1.5 block text-sm font-semibold text-cyan-400">
-            Narration (customers see this)
+            Narration (customers see this on main site)
           </label>
           <textarea
             className="input min-h-[100px] border-cyan-500/30 bg-black/20"
             value={form.narration}
             onChange={(e) => setForm({ ...form, narration: e.target.value })}
-            placeholder="Tell the story of this image or video — what clients should know..."
+            placeholder="Tell the story of this image or video..."
           />
-          <p className="mt-1.5 text-xs text-[var(--muted)]">
-            This text appears under the media on the public gallery page.
-          </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -261,7 +276,7 @@ export default function AdminGalleryPage() {
             onChange={(e) => setForm({ ...form, published: e.target.checked })}
             className="rounded"
           />
-          Published (show on public Gallery)
+          Published (show on main site gallery)
         </label>
         <button
           type="submit"
@@ -307,10 +322,24 @@ export default function AdminGalleryPage() {
                   )}
                 </div>
                 <div className="p-3">
-                  <p className="font-medium text-[var(--heading)]">{item.title}</p>
-                  <p className="text-xs text-[var(--muted)]">
-                    {item.type} · {item.published ? "Published" : "Draft"}
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-[var(--heading)]">
+                        {item.title}
+                      </p>
+                      <p className="text-xs text-[var(--muted)]">
+                        {item.type} · {item.published ? "Published" : "Draft"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(item.id, item.title)}
+                      className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                   {item.narration ? (
                     <p className="mt-2 rounded-lg bg-cyan-500/10 p-2 text-sm leading-relaxed text-[var(--heading)]">
                       {item.narration}

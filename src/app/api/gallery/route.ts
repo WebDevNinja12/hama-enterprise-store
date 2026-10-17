@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
@@ -92,6 +92,36 @@ export async function POST(req: NextRequest) {
     console.error("Gallery POST error:", error);
     return NextResponse.json(
       { error: "Failed to create gallery item" },
+      { status: 500, headers: corsHeaders }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id || session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403, headers: corsHeaders }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json(
+        { error: "id is required" },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    await prisma.galleryMedia.delete({ where: { id } });
+    return NextResponse.json({ ok: true }, { headers: corsHeaders });
+  } catch (error) {
+    console.error("Gallery DELETE error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete gallery item" },
       { status: 500, headers: corsHeaders }
     );
   }

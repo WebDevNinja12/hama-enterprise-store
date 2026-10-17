@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-/**
- * Company logo — logo.png in repo (HAMA mark).
- * Served via /logo.png rewrite to GitHub raw asset.
- */
+const LOGO_SRC =
+  "https://raw.githubusercontent.com/WebDevNinja12/hama-enterprise-store/main/logo.png";
+
+/** Company logo — always loads from the repo so it shows on the store. */
 export default function Logo({
   className = "",
   showText = true,
@@ -15,7 +15,7 @@ export default function Logo({
     <Link href="/" className={`flex shrink-0 items-center gap-2.5 ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/logo.png"
+        src={LOGO_SRC}
         alt="HAMA ENTERPRISE NG"
         width={40}
         height={40}

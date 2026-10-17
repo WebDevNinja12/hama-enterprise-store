@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 const MAIN_SITE = "https://hama-enterprise-ng.vercel.app/index.html";
+const LOGO_SRC =
+  "https://raw.githubusercontent.com/WebDevNinja12/hama-enterprise-store/main/logo.png";
 
 export default function Footer() {
   return (
@@ -16,7 +18,7 @@ export default function Footer() {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/logo.png"
+                src={LOGO_SRC}
                 alt="HAMA ENTERPRISE NG"
                 width={40}
                 height={40}
