@@ -20,6 +20,7 @@ import { useTheme } from "@/context/ThemeContext";
 const navLinks = [
   { href: "/", label: "Store" },
   { href: "/catalog", label: "Catalog" },
+  { href: "/gallery", label: "Gallery" },
   { href: "/cart", label: "Cart" },
   { href: "/checkout", label: "Checkout" },
 ];

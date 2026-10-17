@@ -14,6 +14,8 @@ type MediaItem = {
   sortOrder: number;
 };
 
+const MAX_FILE_BYTES = 2.5 * 1024 * 1024; // ~2.5MB for data URLs
+
 export default function AdminGalleryPage() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +32,7 @@ export default function AdminGalleryPage() {
   async function loadItems() {
     setLoading(true);
     try {
-      const res = await fetch("/api/gallery");
+      const res = await fetch("/api/gallery?admin=1");
       const data = await res.json();
       setItems(data.items || []);
     } catch {
@@ -43,6 +45,45 @@ export default function AdminGalleryPage() {
   useEffect(() => {
     loadItems();
   }, []);
+
+  function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (file.size > MAX_FILE_BYTES) {
+        reject(
+          new Error(
+            `File too large (max ~2.5MB). Host the file online and paste the URL instead.`
+          )
+        );
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Could not read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function onPickFile(
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: "url" | "poster"
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setForm((f) => ({ ...f, [field]: dataUrl }));
+      if (field === "url") {
+        if (file.type.startsWith("video/")) {
+          setForm((f) => ({ ...f, type: "VIDEO", url: dataUrl }));
+        } else if (file.type.startsWith("image/")) {
+          setForm((f) => ({ ...f, type: "IMAGE", url: dataUrl }));
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -83,154 +124,189 @@ export default function AdminGalleryPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-56 shrink-0 border-r border-[var(--border)] bg-[var(--card)] p-4 md:block">
-        <p className="mb-6 text-xs font-bold uppercase tracking-widest text-cyan-400">Admin Console</p>
-        <nav className="space-y-1">
-          <Link href="/admin" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-white">
-            Inventory
-          </Link>
-          <button className="flex w-full items-center gap-2.5 rounded-lg bg-cyan-500/15 px-3 py-2.5 text-sm font-medium text-cyan-400">
-            Gallery Media
-          </button>
-          <Link href="/" className="mt-4 flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-white">
-            Exit to Store
-          </Link>
-        </nav>
-      </aside>
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <Link
+        href="/admin"
+        className="mb-2 inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline"
+      >
+        <ArrowLeft className="h-3 w-3" /> Admin
+      </Link>
+      <h1 className="mb-2 text-2xl font-bold text-[var(--heading)]">
+        Gallery media
+      </h1>
+      <p className="mb-6 text-sm text-[var(--muted)]">
+        Upload a file or paste a direct image/video URL. Published items show on{" "}
+        <Link href="/gallery" className="text-cyan-400 hover:underline">
+          /gallery
+        </Link>
+        .
+      </p>
 
-      <div className="flex-1 p-6 lg:p-8">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Link href="/admin" className="mb-2 inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline">
-              <ArrowLeft className="h-3 w-3" /> Back to Admin
-            </Link>
-            <p className="text-xs font-semibold uppercase tracking-widest text-cyan-400">Admin Console // Gallery</p>
-            <h1 className="text-2xl font-bold text-white">Images & Videos</h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Add media here — it will appear on the main website Gallery page.
-            </p>
-          </div>
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {error}
+      <form onSubmit={handleAdd} className="card mb-8 space-y-4 p-6">
+        <h2 className="flex items-center gap-2 font-semibold text-[var(--heading)]">
+          <Plus className="h-4 w-4 text-cyan-400" /> Add media
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted)]">Title</label>
+            <input
+              required
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              className="input"
+              placeholder="Project site"
+            />
           </div>
-        )}
-
-        {/* Add form */}
-        <form onSubmit={handleAdd} className="card mb-8 space-y-4 p-6">
-          <h2 className="flex items-center gap-2 font-semibold text-white">
-            <Plus className="h-4 w-4 text-cyan-400" /> Add Media
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs text-[var(--muted)]">Title</label>
-              <input
-                required
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
-                placeholder="Project Site"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-[var(--muted)]">Type</label>
-              <select
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as "IMAGE" | "VIDEO" })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
-              >
-                <option value="IMAGE">Image</option>
-                <option value="VIDEO">Video</option>
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-[var(--muted)]">Media URL</label>
-              <input
-                required
-                value={form.url}
-                onChange={(e) => setForm({ ...form, url: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
-                placeholder="https://... (image or video file URL)"
-              />
-            </div>
-            {form.type === "VIDEO" && (
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-xs text-[var(--muted)]">Poster image URL (optional)</label>
-                <input
-                  value={form.poster}
-                  onChange={(e) => setForm({ ...form, poster: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--border)] bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500"
-                  placeholder="https://... thumbnail for the video"
-                />
+          <div>
+            <label className="mb-1 block text-xs text-[var(--muted)]">Type</label>
+            <select
+              value={form.type}
+              onChange={(e) =>
+                setForm({ ...form, type: e.target.value as "IMAGE" | "VIDEO" })
+              }
+              className="input"
+            >
+              <option value="IMAGE">Image</option>
+              <option value="VIDEO">Video</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs text-[var(--muted)]">
+              Media URL or upload
+            </label>
+            <input
+              value={form.url.startsWith("data:") ? "[Uploaded file]" : form.url}
+              onChange={(e) => setForm({ ...form, url: e.target.value })}
+              className="input mb-2"
+              placeholder="https://... or upload below"
+            />
+            <input
+              type="file"
+              accept={form.type === "IMAGE" ? "image/*" : "video/*,image/*"}
+              onChange={(e) => onPickFile(e, "url")}
+              className="block w-full text-sm text-[var(--muted)]"
+            />
+            {form.url && (
+              <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)]">
+                {form.type === "IMAGE" || form.url.startsWith("data:image") ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={form.url}
+                    alt="Preview"
+                    className="max-h-48 w-full object-contain bg-black/40"
+                  />
+                ) : (
+                  <video
+                    src={form.url}
+                    controls
+                    className="max-h-48 w-full bg-black/40"
+                  />
+                )}
               </div>
             )}
           </div>
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
-            <input
-              type="checkbox"
-              checked={form.published}
-              onChange={(e) => setForm({ ...form, published: e.target.checked })}
-              className="rounded"
-            />
-            Published (show on main Gallery)
-          </label>
-          <button
-            type="submit"
-            disabled={saving}
-            className="btn-primary rounded-lg px-5 py-2 text-sm disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Add to Gallery"}
-          </button>
-        </form>
-
-        {/* List */}
-        <div className="card p-6">
-          <h2 className="mb-4 font-semibold text-white">Gallery Items ({items.length})</h2>
-          {loading ? (
-            <p className="text-sm text-[var(--muted)]">Loading...</p>
-          ) : items.length === 0 ? (
-            <p className="text-sm text-[var(--muted)]">No media yet. Add your first image or video above.</p>
-          ) : (
-            <div className="space-y-3">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/15">
-                      {item.type === "IMAGE" ? (
-                        <ImageIcon className="h-5 w-5 text-cyan-400" />
-                      ) : (
-                        <Video className="h-5 w-5 text-cyan-400" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-white">{item.title}</p>
-                      <p className="max-w-md truncate text-xs text-[var(--muted)]">{item.url}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`badge text-[10px] ${item.published ? "badge-success" : "badge-warning"}`}>
-                      {item.published ? "Published" : "Draft"}
-                    </span>
-                    <span className="text-xs text-[var(--muted)]">{item.type}</span>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+          {form.type === "VIDEO" && (
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs text-[var(--muted)]">
+                Poster / thumbnail (optional)
+              </label>
+              <input
+                value={
+                  form.poster.startsWith("data:")
+                    ? "[Uploaded poster]"
+                    : form.poster
+                }
+                onChange={(e) => setForm({ ...form, poster: e.target.value })}
+                className="input mb-2"
+                placeholder="https://... thumbnail"
+              />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => onPickFile(e, "poster")}
+                className="block w-full text-sm text-[var(--muted)]"
+              />
             </div>
           )}
         </div>
+        <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+          <input
+            type="checkbox"
+            checked={form.published}
+            onChange={(e) => setForm({ ...form, published: e.target.checked })}
+            className="rounded"
+          />
+          Published (show on public Gallery)
+        </label>
+        <button
+          type="submit"
+          disabled={saving || !form.url}
+          className="btn-primary rounded-lg px-5 py-2 text-sm disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Add to Gallery"}
+        </button>
+      </form>
+
+      <div className="card p-6">
+        <h2 className="mb-4 font-semibold text-[var(--heading)]">
+          Gallery items ({items.length})
+        </h2>
+        {loading ? (
+          <p className="text-sm text-[var(--muted)]">Loading...</p>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">No media yet.</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className="overflow-hidden rounded-xl border border-[var(--border)]"
+              >
+                <div className="aspect-video bg-[var(--surface)]">
+                  {item.type === "IMAGE" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.url}
+                      alt={item.title}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <video
+                      src={item.url}
+                      poster={item.poster || undefined}
+                      controls
+                      className="h-full w-full object-cover"
+                      preload="metadata"
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2 p-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-[var(--heading)]">
+                      {item.title}
+                    </p>
+                    <p className="text-xs text-[var(--muted)]">
+                      {item.type} · {item.published ? "Published" : "Draft"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

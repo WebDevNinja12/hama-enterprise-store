@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,11 +12,24 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-/** Public: list published gallery media for the main website Gallery page */
-export async function GET() {
+/** Public: published only. Admin: ?admin=1 all items */
+export async function GET(req: NextRequest) {
   try {
+    const adminFlag = req.nextUrl.searchParams.get("admin") === "1";
+    let isAdmin = false;
+    if (adminFlag) {
+      const session = await auth();
+      isAdmin = session?.user?.role === "ADMIN";
+      if (!isAdmin) {
+        return NextResponse.json(
+          { error: "Admin access required" },
+          { status: 403, headers: corsHeaders }
+        );
+      }
+    }
+
     const items = await prisma.galleryMedia.findMany({
-      where: { published: true },
+      where: isAdmin ? undefined : { published: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
     });
     return NextResponse.json({ items }, { headers: corsHeaders });
@@ -28,9 +42,16 @@ export async function GET() {
   }
 }
 
-/** Admin: create a gallery item (image or video URL) */
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id || session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403, headers: corsHeaders }
+      );
+    }
+
     const body = await req.json();
     const { title, type, url, poster, published, sortOrder } = body;
 
@@ -48,12 +69,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Guard oversized data URLs
+    if (typeof url === "string" && url.startsWith("data:") && url.length > 3_500_000) {
+      return NextResponse.json(
+        { error: "File too large. Use a smaller file or external URL." },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     const item = await prisma.galleryMedia.create({
       data: {
-        title,
+        title: String(title).trim(),
         type,
-        url,
-        poster: poster || null,
+        url: String(url),
+        poster: poster ? String(poster) : null,
         published: published !== false,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
       },
@@ -69,9 +98,16 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Admin: delete a gallery item by id */
 export async function DELETE(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id || session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403, headers: corsHeaders }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) {
