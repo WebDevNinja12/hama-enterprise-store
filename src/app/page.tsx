@@ -106,12 +106,14 @@ export default function HomePage() {
               >
                 Shop the future <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link
-                href="/gallery"
+              <a
+                href="https://hama-enterprise-ng.vercel.app/index.html"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn-secondary inline-flex items-center gap-2 px-7 py-3.5 text-sm"
               >
-                View gallery
-              </Link>
+                Company website
+              </a>
             </div>
           </div>
 

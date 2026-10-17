@@ -21,7 +21,6 @@ import Logo from "@/components/Logo";
 const navLinks = [
   { href: "/", label: "Store" },
   { href: "/catalog", label: "Catalog" },
-  { href: "/gallery", label: "Gallery" },
   { href: "/cart", label: "Cart" },
   { href: "/checkout", label: "Checkout" },
 ];
@@ -62,6 +61,14 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          <a
+            href="https://hama-enterprise-ng.vercel.app/index.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full px-3.5 py-2 text-sm font-medium text-[var(--muted)] hover:bg-[var(--nav-hover)] hover:text-[var(--heading)]"
+          >
+            Main site
+          </a>
         </nav>
 
         <div className="flex items-center gap-0.5 sm:gap-1">
@@ -126,6 +133,15 @@ export default function Header() {
                 {link.label}
               </Link>
             ))}
+            <a
+              href="https://hama-enterprise-ng.vercel.app/index.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setMobileOpen(false)}
+              className="rounded-xl px-3 py-2.5 text-sm text-[var(--muted)]"
+            >
+              Main site
+            </a>
             <Link
               href={session ? "/account" : "/login"}
               onClick={() => setMobileOpen(false)}
