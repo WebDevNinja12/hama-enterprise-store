@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import {
   ArrowLeft,
   Plus,
@@ -40,7 +39,6 @@ const emptyForm = {
 type Filter = "ALL" | "OUT" | "LOW" | "IN_STOCK";
 
 export default function AdminProductsPage() {
-  const { data: session, status, update } = useSession();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -50,21 +48,6 @@ export default function AdminProductsPage() {
   const [filter, setFilter] = useState<Filter>("ALL");
   const [editingStock, setEditingStock] = useState<Record<string, string>>({});
   const [editingImage, setEditingImage] = useState<Record<string, string>>({});
-
-  const touchSession = useCallback(async () => {
-    try {
-      await update();
-    } catch {
-      /* ignore */
-    }
-  }, [update]);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      update().catch(() => {});
-    }, 60_000);
-    return () => clearInterval(id);
-  }, [update]);
 
   async function load() {
     setLoading(true);
@@ -84,8 +67,8 @@ export default function AdminProductsPage() {
   }
 
   useEffect(() => {
-    if (status === "authenticated") load();
-  }, [status]);
+    load();
+  }, []);
 
   const counts = useMemo(
     () => ({
@@ -106,19 +89,12 @@ export default function AdminProductsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
     setSaving(true);
     setError("");
     setSuccess("");
 
     try {
-      await touchSession();
-
-      if (session?.user?.role !== "ADMIN") {
-        throw new Error(
-          "Not signed in as admin. Open /login, sign in with the admin account, then return here."
-        );
-      }
-
       const imageUrl = form.imageUrl.trim();
       if (!imageUrl.startsWith("https://")) {
         throw new Error(
@@ -231,26 +207,6 @@ export default function AdminProductsPage() {
     }
   }
 
-  if (status === "loading") {
-    return (
-      <div className="p-10 text-center text-[var(--muted)]">Loading…</div>
-    );
-  }
-
-  if (status === "unauthenticated" || session?.user?.role !== "ADMIN") {
-    return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <p className="mb-4 text-[var(--heading)] font-semibold">Admin only</p>
-        <p className="mb-6 text-sm text-[var(--muted)]">
-          Sign in with the admin account to manage products.
-        </p>
-        <Link href="/login" className="btn-primary px-6 py-2.5 text-sm">
-          Go to login
-        </Link>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -267,6 +223,7 @@ export default function AdminProductsPage() {
           </p>
         </div>
         <button
+          type="button"
           onClick={load}
           className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
         >
@@ -311,9 +268,9 @@ export default function AdminProductsPage() {
               className="input"
               required
               minLength={2}
+              autoComplete="off"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              onFocus={() => touchSession()}
             />
           </div>
           <div className="sm:col-span-2">
@@ -324,7 +281,6 @@ export default function AdminProductsPage() {
               minLength={5}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              onFocus={() => touchSession()}
             />
           </div>
 
@@ -336,10 +292,11 @@ export default function AdminProductsPage() {
               className="input"
               type="url"
               required
+              autoComplete="off"
+              inputMode="url"
               placeholder="https://images.unsplash.com/photo-..."
               value={form.imageUrl}
               onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-              onFocus={() => touchSession()}
             />
             {form.imageUrl.startsWith("https://") && (
               <div className="mt-2 h-24 w-24 overflow-hidden rounded-xl border border-[var(--border)]">
@@ -366,7 +323,6 @@ export default function AdminProductsPage() {
                   : ""
               }
               onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
-              onSessionTouch={() => touchSession()}
             />
           </div>
 
@@ -432,6 +388,7 @@ export default function AdminProductsPage() {
         ).map(([key, label]) => (
           <button
             key={key}
+            type="button"
             onClick={() => setFilter(key)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
               filter === key
@@ -513,6 +470,7 @@ export default function AdminProductsPage() {
                       />
                       {editingStock[p.id] !== undefined && (
                         <button
+                          type="button"
                           onClick={() => handleStockSave(p.id)}
                           className="btn-primary px-3 py-1.5 text-xs"
                         >
@@ -524,6 +482,7 @@ export default function AdminProductsPage() {
                       ${Number(p.price).toLocaleString()}
                     </p>
                     <button
+                      type="button"
                       onClick={() => handleDelete(p.id, p.name)}
                       className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
                     >
@@ -554,6 +513,7 @@ export default function AdminProductsPage() {
                   </div>
                   {editingImage[p.id] !== undefined && (
                     <button
+                      type="button"
                       onClick={() => handleImageSave(p.id)}
                       className="btn-primary px-3 py-2 text-xs"
                     >

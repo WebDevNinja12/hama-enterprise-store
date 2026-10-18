@@ -7,7 +7,13 @@ import CartReminder from "@/components/CartReminder";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
+    <SessionProvider
+      // Avoid refetch on every focus — was causing AdminGuard "Checking access..."
+      // and wiping focused form fields on mobile.
+      refetchOnWindowFocus={false}
+      refetchWhenOffline={false}
+      refetchInterval={0}
+    >
       <ThemeProvider>
         <CartProvider>
           <CartReminder />
