@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { Star, ShoppingCart } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { products as seedProducts, productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
 
 export default function CatalogPage() {
   const { addItem, getQtyInCart } = useCart();
+  const searchParams = useSearchParams();
+  const qParam = (searchParams.get("q") || "").trim().toLowerCase();
   const [category, setCategory] = useState("All");
   const [message, setMessage] = useState<{ id: string; text: string } | null>(
     null
@@ -50,9 +53,19 @@ export default function CatalogPage() {
   }, [allProducts]);
 
   const filtered = useMemo(() => {
-    if (category === "All") return allProducts;
-    return allProducts.filter((p) => p.category === category);
-  }, [category, allProducts]);
+    let list = allProducts;
+    if (category !== "All") list = list.filter((p) => p.category === category);
+    if (qParam) {
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(qParam) ||
+          p.category.toLowerCase().includes(qParam) ||
+          p.brand.toLowerCase().includes(qParam) ||
+          p.description.toLowerCase().includes(qParam)
+      );
+    }
+    return list;
+  }, [category, allProducts, qParam]);
 
   function flash(id: string, text: string) {
     setMessage({ id, text });
@@ -91,6 +104,7 @@ export default function CatalogPage() {
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           {filtered.length} products
+          {qParam ? ` matching “${qParam}”` : ""}
         </p>
       </div>
 
