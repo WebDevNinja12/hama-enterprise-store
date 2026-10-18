@@ -8,6 +8,11 @@ import { productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
 import SafeImage from "@/components/SafeImage";
 
+type ProductDetail = Product & {
+  videoUrl?: string | null;
+  posterUrl?: string | null;
+};
+
 export default function ProductPage() {
   const params = useParams();
   const router = useRouter();
@@ -15,7 +20,7 @@ export default function ProductPage() {
   const { addItem } = useCart();
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
-  const [product, setProduct] = useState<Product | null>(null);
+  const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,6 +46,8 @@ export default function ProductPage() {
             description: p.description || "",
             image: img,
             imageUrl: p.imageUrl || img,
+            videoUrl: p.videoUrl || null,
+            posterUrl: p.posterUrl || null,
             stock: p.stock ?? 0,
           });
         } else {
@@ -97,15 +104,34 @@ export default function ProductPage() {
       </Link>
 
       <div className="grid gap-10 lg:grid-cols-2">
-        <div className="card relative aspect-square overflow-hidden">
-          <SafeImage
-            src={img}
-            alt={product.name}
-            fill
-            useFill
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            className="object-cover"
-          />
+        <div className="space-y-4">
+          <div className="card relative aspect-square overflow-hidden">
+            <SafeImage
+              src={img}
+              alt={product.name}
+              fill
+              useFill
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
+            />
+          </div>
+
+          {product.videoUrl && (
+            <div className="card overflow-hidden">
+              <video
+                key={product.videoUrl}
+                controls
+                playsInline
+                muted
+                preload="metadata"
+                poster={product.posterUrl || img}
+                className="aspect-video w-full bg-black"
+              >
+                <source src={product.videoUrl} type="video/mp4" />
+                Your browser does not support MP4 playback.
+              </video>
+            </div>
+          )}
         </div>
 
         <div>

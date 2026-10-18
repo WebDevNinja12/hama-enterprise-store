@@ -1,22 +1,26 @@
 "use client";
 
 import Image, { type ImageProps } from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const FALLBACK =
-  "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80";
+  "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=800&q=80";
 
 type Props = Omit<ImageProps, "src" | "alt"> & {
   src?: string | null;
   alt: string;
-  /** Prefer fill inside a sized parent for responsive cards */
   useFill?: boolean;
 };
 
-/**
- * Next.js Image with WebP/AVIF (via next.config), sizes, blur placeholder,
- * and broken-URL fallback. Avoids plain <img loading="lazy"> pitfalls.
- */
+function usable(src?: string | null) {
+  if (!src || typeof src !== "string") return null;
+  const t = src.trim();
+  if (!t || t.startsWith("data:") || t.startsWith("blob:")) return null;
+  if (t.startsWith("http://") || t.startsWith("https://") || t.startsWith("/"))
+    return t;
+  return null;
+}
+
 export default function SafeImage({
   src,
   alt,
@@ -25,33 +29,37 @@ export default function SafeImage({
   sizes = "(max-width: 768px) 100vw, 33vw",
   ...rest
 }: Props) {
-  const initial =
-    src && typeof src === "string" && !src.startsWith("data:") ? src : FALLBACK;
-  const [current, setCurrent] = useState(initial);
+  const resolved = usable(src) || FALLBACK;
+  const [current, setCurrent] = useState(resolved);
   const [failed, setFailed] = useState(false);
 
-  const common = {
-    alt,
-    className,
-    sizes,
-    quality: 75 as const,
-    onError: () => {
-      if (!failed) {
-        setFailed(true);
-        setCurrent(FALLBACK);
-      }
-    },
+  useEffect(() => {
+    const next = usable(src) || FALLBACK;
+    setCurrent(next);
+    setFailed(false);
+  }, [src]);
+
+  const onError = () => {
+    if (!failed) {
+      console.error("[SafeImage] failed to load:", current);
+      setFailed(true);
+      setCurrent(FALLBACK);
+    }
   };
 
   if (useFill || rest.fill) {
     return (
       <Image
         {...rest}
-        {...common}
+        alt={alt}
+        className={className}
+        sizes={sizes}
+        quality={75}
         src={current}
         fill
         style={{ objectFit: "cover", ...(rest.style || {}) }}
         placeholder="empty"
+        onError={onError}
       />
     );
   }
@@ -62,11 +70,15 @@ export default function SafeImage({
   return (
     <Image
       {...rest}
-      {...common}
+      alt={alt}
+      className={className}
+      sizes={sizes}
+      quality={75}
       src={current}
       width={width}
       height={height}
       placeholder="empty"
+      onError={onError}
     />
   );
 }
