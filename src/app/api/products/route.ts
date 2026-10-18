@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { assertHttpsImageUrl, verifyRemoteImage } from "@/lib/blob";
+import { assertHttpsImageUrl } from "@/lib/blob";
 
 function slugify(text: string) {
   return text
@@ -17,27 +17,21 @@ async function ensureProductColumns() {
     await prisma.$executeRawUnsafe(
       `ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT`
     );
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "videoUrl" TEXT`
-    );
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "posterUrl" TEXT`
-    );
   } catch (e) {
-    console.warn("ensureProductColumns:", e);
+    console.warn("ensure imageUrl:", e);
   }
 }
 
 const productSchema = z.object({
   name: z.string().min(2),
   description: z.string().min(5),
-  price: z.number().positive(),
-  compareAt: z.number().positive().optional().nullable(),
+  price: z.coerce.number().positive(),
+  compareAt: z.coerce.number().positive().optional().nullable(),
   category: z.string().min(1),
   brand: z.string().optional(),
   imageUrl: z.string().optional().nullable(),
-  stock: z.number().int().min(0).optional(),
-  rating: z.number().min(0).max(5).optional(),
+  stock: z.coerce.number().int().min(0).optional(),
+  rating: z.coerce.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
   slug: z.string().optional(),
 });
@@ -50,7 +44,7 @@ function mapDbProduct(p: {
   compareAt: { toString(): string } | number | null;
   category: string;
   brand: string;
-  emoji: string;
+  emoji?: string;
   imageUrl?: string | null;
   stock: number;
   rating: number;
@@ -66,7 +60,7 @@ function mapDbProduct(p: {
     compareAt: p.compareAt != null ? Number(p.compareAt) : undefined,
     category: p.category,
     brand: p.brand,
-    emoji: p.emoji,
+    emoji: p.emoji || "📦",
     image: imageUrl || undefined,
     imageUrl: imageUrl || undefined,
     stock: p.stock,
@@ -121,7 +115,10 @@ export async function POST(req: NextRequest) {
     const session = await auth();
     if (!session?.user?.id || session.user.role !== "ADMIN") {
       return NextResponse.json(
-        { error: "Admin access required. Sign in again as admin." },
+        {
+          error:
+            "Admin session expired or missing. Sign out, sign in as admin, then try again.",
+        },
         { status: 403 }
       );
     }
@@ -135,7 +132,7 @@ export async function POST(req: NextRequest) {
     const exists = await prisma.storeProduct.findUnique({ where: { slug } });
     if (exists) slug = `${slug}-${Date.now().toString(36)}`;
 
-    let imageUrl: string | null;
+    let imageUrl: string | null = null;
     try {
       imageUrl = assertHttpsImageUrl(data.imageUrl, "imageUrl");
     } catch (e) {
@@ -149,37 +146,59 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Product image is required. Paste an https:// image URL (or use Blob upload).",
+            "Product image is required. Paste a full https:// image link (or upload via Blob).",
         },
         { status: 400 }
       );
     }
 
-    // Soft verify: log if unreachable, still allow valid https URLs
-    // (many CDNs block HEAD/server fetch but work in the browser)
-    const check = await verifyRemoteImage(imageUrl);
-    if (!check.ok) {
-      console.warn("Image verify soft-fail, saving anyway:", imageUrl, check.error);
-    }
+    try {
+      const product = await prisma.storeProduct.create({
+        data: {
+          name: data.name.trim(),
+          slug,
+          description: data.description.trim(),
+          price: data.price,
+          compareAt: data.compareAt ?? null,
+          category: data.category.trim(),
+          brand: data.brand?.trim() || "HAMA",
+          emoji: "📦",
+          imageUrl,
+          stock: data.stock ?? 0,
+          rating: data.rating ?? 5,
+          published: data.published ?? true,
+        },
+      });
+      return NextResponse.json({ ok: true, product: mapDbProduct(product) });
+    } catch (createErr) {
+      console.error("Prisma create failed, trying raw insert:", createErr);
 
-    const product = await prisma.storeProduct.create({
-      data: {
-        name: data.name.trim(),
+      // Fallback raw insert if Prisma client is out of sync with DB
+      const id = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`;
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "StoreProduct"
+          (id, name, slug, description, price, category, brand, emoji, "imageUrl", stock, rating, published, "createdAt", "updatedAt")
+         VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, NOW(), NOW())`,
+        id,
+        data.name.trim(),
         slug,
-        description: data.description.trim(),
-        price: data.price,
-        compareAt: data.compareAt ?? null,
-        category: data.category.trim(),
-        brand: data.brand?.trim() || "HAMA",
-        emoji: "📦",
+        data.description.trim(),
+        data.price,
+        data.category.trim(),
+        data.brand?.trim() || "HAMA",
+        "📦",
         imageUrl,
-        stock: data.stock ?? 0,
-        rating: data.rating ?? 5,
-        published: data.published ?? true,
-      },
-    });
+        data.stock ?? 0,
+        data.rating ?? 5
+      );
 
-    return NextResponse.json({ ok: true, product: mapDbProduct(product) });
+      const product = await prisma.storeProduct.findUnique({ where: { id } });
+      if (product) {
+        return NextResponse.json({ ok: true, product: mapDbProduct(product) });
+      }
+      throw createErr;
+    }
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
@@ -189,17 +208,6 @@ export async function POST(req: NextRequest) {
     }
     const msg = err instanceof Error ? err.message : "Failed to create product";
     console.error("Create product error:", err);
-
-    if (msg.includes("imageUrl") || msg.includes("column") || msg.includes("Unknown arg")) {
-      return NextResponse.json(
-        {
-          error:
-            "Database missing imageUrl column. Open Admin → Push schema, then try again.",
-        },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

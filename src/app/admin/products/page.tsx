@@ -40,7 +40,7 @@ const emptyForm = {
 type Filter = "ALL" | "OUT" | "LOW" | "IN_STOCK";
 
 export default function AdminProductsPage() {
-  const { update } = useSession();
+  const { data: session, status, update } = useSession();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,14 +51,18 @@ export default function AdminProductsPage() {
   const [editingStock, setEditingStock] = useState<Record<string, string>>({});
   const [editingImage, setEditingImage] = useState<Record<string, string>>({});
 
-  const touchSession = useCallback(() => {
-    update().catch(() => {});
+  const touchSession = useCallback(async () => {
+    try {
+      await update();
+    } catch {
+      /* ignore */
+    }
   }, [update]);
 
   useEffect(() => {
     const id = setInterval(() => {
       update().catch(() => {});
-    }, 90_000);
+    }, 60_000);
     return () => clearInterval(id);
   }, [update]);
 
@@ -66,7 +70,9 @@ export default function AdminProductsPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/products?admin=1");
+      const res = await fetch("/api/products?admin=1", {
+        credentials: "include",
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
       setProducts(data.products || []);
@@ -78,8 +84,8 @@ export default function AdminProductsPage() {
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    if (status === "authenticated") load();
+  }, [status]);
 
   const counts = useMemo(
     () => ({
@@ -103,31 +109,57 @@ export default function AdminProductsPage() {
     setSaving(true);
     setError("");
     setSuccess("");
-    touchSession();
+
     try {
+      await touchSession();
+
+      if (session?.user?.role !== "ADMIN") {
+        throw new Error(
+          "Not signed in as admin. Open /login, sign in with the admin account, then return here."
+        );
+      }
+
       const imageUrl = form.imageUrl.trim();
       if (!imageUrl.startsWith("https://")) {
-        throw new Error("Image must be an https:// URL (paste link or use Blob upload).");
+        throw new Error(
+          "Image must be a full https:// URL. Example: https://images.unsplash.com/photo-xxx?w=800"
+        );
+      }
+
+      const price = Number(form.price);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new Error("Enter a valid price greater than 0");
       }
 
       const res = await fetch("/api/products", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          price: Number(form.price),
-          category: form.category,
-          brand: form.brand,
-          stock: Number(form.stock) || 0,
+          name: form.name.trim(),
+          description: form.description.trim(),
+          price,
+          category: form.category.trim() || "General",
+          brand: form.brand.trim() || "HAMA",
+          stock: Math.max(0, parseInt(form.stock, 10) || 0),
           imageUrl,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create");
-      setSuccess(`Product "${data.product.name}" saved`);
+
+      let data: { error?: string; product?: { name: string } } = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Server error (${res.status}). Try again in a moment.`);
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to create (${res.status})`);
+      }
+
+      setSuccess(`Product "${data.product?.name || form.name}" saved`);
       setForm(emptyForm);
-      load();
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create");
     } finally {
@@ -138,7 +170,10 @@ export default function AdminProductsPage() {
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Remove product "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/products/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Delete failed");
       setProducts((prev) => prev.filter((p) => p.id !== id));
@@ -155,6 +190,7 @@ export default function AdminProductsPage() {
     try {
       const res = await fetch(`/api/products/${id}`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stock }),
       });
@@ -177,6 +213,7 @@ export default function AdminProductsPage() {
     try {
       const res = await fetch(`/api/products/${id}`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageUrl: imageUrl || null }),
       });
@@ -194,6 +231,26 @@ export default function AdminProductsPage() {
     }
   }
 
+  if (status === "loading") {
+    return (
+      <div className="p-10 text-center text-[var(--muted)]">Loading…</div>
+    );
+  }
+
+  if (status === "unauthenticated" || session?.user?.role !== "ADMIN") {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <p className="mb-4 text-[var(--heading)] font-semibold">Admin only</p>
+        <p className="mb-6 text-sm text-[var(--muted)]">
+          Sign in with the admin account to manage products.
+        </p>
+        <Link href="/login" className="btn-primary px-6 py-2.5 text-sm">
+          Go to login
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -206,7 +263,7 @@ export default function AdminProductsPage() {
           </Link>
           <h1 className="text-2xl font-bold text-[var(--heading)]">Products</h1>
           <p className="text-sm text-[var(--muted)]">
-            Image by https URL (server fetches to verify) or Blob upload · Videos belong in Gallery
+            Paste an https image URL or upload to Blob · then Save
           </p>
         </div>
         <button
@@ -253,9 +310,10 @@ export default function AdminProductsPage() {
             <input
               className="input"
               required
+              minLength={2}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              onFocus={touchSession}
+              onFocus={() => touchSession()}
             />
           </div>
           <div className="sm:col-span-2">
@@ -263,23 +321,25 @@ export default function AdminProductsPage() {
             <textarea
               className="input min-h-[80px]"
               required
+              minLength={5}
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              onFocus={touchSession}
+              onFocus={() => touchSession()}
             />
           </div>
 
           <div className="sm:col-span-2">
             <label className="mb-1.5 block text-xs text-[var(--muted)]">
-              Image URL (https — server will fetch and verify)
+              Image URL (required — must start with https://)
             </label>
             <input
               className="input"
               type="url"
-              placeholder="https://example.com/photo.jpg"
+              required
+              placeholder="https://images.unsplash.com/photo-..."
               value={form.imageUrl}
               onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-              onFocus={touchSession}
+              onFocus={() => touchSession()}
             />
             {form.imageUrl.startsWith("https://") && (
               <div className="mt-2 h-24 w-24 overflow-hidden rounded-xl border border-[var(--border)]">
@@ -288,21 +348,25 @@ export default function AdminProductsPage() {
                   src={form.imageUrl}
                   alt="Preview"
                   className="h-full w-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.opacity = "0.3";
+                  }}
                 />
               </div>
             )}
           </div>
 
           <div className="sm:col-span-2">
-            <p className="mb-2 text-xs text-[var(--muted)]">
-              Or upload to Vercel Blob (optional)
-            </p>
             <MediaUploader
               kind="image"
-              label="Blob image upload"
-              value={form.imageUrl.startsWith("https://") && form.imageUrl.includes("blob.vercel-storage.com") ? form.imageUrl : ""}
+              label="Or upload image to Vercel Blob"
+              value={
+                form.imageUrl.includes("blob.vercel-storage.com")
+                  ? form.imageUrl
+                  : ""
+              }
               onChange={(url) => setForm((f) => ({ ...f, imageUrl: url }))}
-              onSessionTouch={touchSession}
+              onSessionTouch={() => touchSession()}
             />
           </div>
 
@@ -348,7 +412,7 @@ export default function AdminProductsPage() {
           <div className="sm:col-span-2">
             <button
               type="submit"
-              disabled={saving || !form.imageUrl.startsWith("https://")}
+              disabled={saving}
               className="btn-primary px-6 py-2.5 text-sm disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save product"}

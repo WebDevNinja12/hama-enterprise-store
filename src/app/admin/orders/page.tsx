@@ -53,16 +53,18 @@ export default function AdminOrdersPage() {
   const [success, setSuccess] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("ALL");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [clearing, setClearing] = useState(false);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/orders");
+      const res = await fetch("/api/orders", { credentials: "include" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
       setOrders(data.orders || []);
+      setSelected(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load orders");
     } finally {
@@ -80,6 +82,7 @@ export default function AdminOrdersPage() {
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
@@ -96,25 +99,57 @@ export default function AdminOrdersPage() {
     }
   }
 
-  async function clearHistory() {
-    const ok = confirm(
-      "Permanently delete ALL order history? This cannot be undone."
-    );
-    if (!ok) return;
-    const typed = prompt('Type CLEAR ORDERS to confirm:');
-    if (typed !== "CLEAR ORDERS") {
-      setError("Cancelled — confirmation text did not match.");
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllFiltered(ids: string[]) {
+    setSelected((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+      if (allSelected) {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      }
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  async function clearSelected() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) {
+      setError("Select at least one order to clear.");
+      return;
+    }
+    if (
+      !confirm(
+        `Permanently delete ${ids.length} selected order(s)? This cannot be undone.`
+      )
+    ) {
       return;
     }
     setClearing(true);
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/admin/orders/clear", { method: "POST" });
+      const res = await fetch("/api/admin/orders/clear", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: ids }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Clear failed");
-      setOrders([]);
-      setSuccess(data.message || "Order history cleared");
+      setOrders((prev) => prev.filter((o) => !selected.has(o.id)));
+      setSelected(new Set());
+      setSuccess(data.message || `Cleared ${ids.length} order(s)`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clear orders");
     } finally {
@@ -124,6 +159,9 @@ export default function AdminOrdersPage() {
 
   const filtered =
     filter === "ALL" ? orders : orders.filter((o) => o.status === filter);
+  const filteredIds = filtered.map((o) => o.id);
+  const allFilteredSelected =
+    filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
 
   const counts = {
     ALL: orders.length,
@@ -148,8 +186,7 @@ export default function AdminOrdersPage() {
             Order management
           </h1>
           <p className="text-sm text-[var(--muted)]">
-            Accept, decline, process, and fulfill orders. Delivered orders are
-            final.
+            Select orders to clear history · delivered orders stay final for status changes
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -160,12 +197,14 @@ export default function AdminOrdersPage() {
             <RefreshCw className="h-4 w-4" /> Refresh
           </button>
           <button
-            onClick={clearHistory}
-            disabled={clearing || orders.length === 0}
+            onClick={clearSelected}
+            disabled={clearing || selected.size === 0}
             className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-40"
           >
             <Trash2 className="h-4 w-4" />
-            {clearing ? "Clearing…" : "Clear order history"}
+            {clearing
+              ? "Clearing…"
+              : `Clear selected (${selected.size})`}
           </button>
         </div>
       </div>
@@ -216,26 +255,51 @@ export default function AdminOrdersPage() {
         </div>
       ) : (
         <div className="space-y-4">
+          <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={() => toggleAllFiltered(filteredIds)}
+              className="h-4 w-4 rounded border-[var(--border)]"
+            />
+            Select all in this filter ({filtered.length})
+          </label>
+
           {filtered.map((order) => {
             const busy = updatingId === order.id;
             const isDelivered = order.status === "DELIVERED";
+            const isChecked = selected.has(order.id);
             return (
-              <div key={order.id} className="card p-5">
+              <div
+                key={order.id}
+                className={`card p-5 ${
+                  isChecked ? "ring-1 ring-cyan-500/40" : ""
+                }`}
+              >
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-mono text-sm font-semibold text-cyan-400">
-                      {order.orderNumber}
-                    </p>
-                    <p className="text-sm font-medium text-[var(--heading)]">
-                      {order.shippingName}
-                    </p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {order.customerEmail}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {order.shippingAddress}, {order.shippingCity}{" "}
-                      {order.shippingPostal}
-                    </p>
+                  <div className="flex gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleOne(order.id)}
+                      className="mt-1 h-4 w-4 rounded border-[var(--border)]"
+                      aria-label={`Select order ${order.orderNumber}`}
+                    />
+                    <div>
+                      <p className="font-mono text-sm font-semibold text-cyan-400">
+                        {order.orderNumber}
+                      </p>
+                      <p className="text-sm font-medium text-[var(--heading)]">
+                        {order.shippingName}
+                      </p>
+                      <p className="text-xs text-[var(--muted)]">
+                        {order.customerEmail}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        {order.shippingAddress}, {order.shippingCity}{" "}
+                        {order.shippingPostal}
+                      </p>
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold text-[var(--heading)]">
@@ -325,7 +389,7 @@ export default function AdminOrdersPage() {
 
                   {isDelivered && (
                     <p className="text-xs text-[var(--muted)]">
-                      Delivered — final. Cannot be reopened.
+                      Delivered — status is final.
                     </p>
                   )}
 
