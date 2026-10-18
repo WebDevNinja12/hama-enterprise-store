@@ -11,6 +11,7 @@ import {
   Truck,
   PackageCheck,
   Clock,
+  Trash2,
 } from "lucide-react";
 
 type OrderItem = {
@@ -49,8 +50,10 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("ALL");
+  const [clearing, setClearing] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -93,6 +96,32 @@ export default function AdminOrdersPage() {
     }
   }
 
+  async function clearHistory() {
+    const ok = confirm(
+      "Permanently delete ALL order history? This cannot be undone."
+    );
+    if (!ok) return;
+    const typed = prompt('Type CLEAR ORDERS to confirm:');
+    if (typed !== "CLEAR ORDERS") {
+      setError("Cancelled — confirmation text did not match.");
+      return;
+    }
+    setClearing(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/admin/orders/clear", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Clear failed");
+      setOrders([]);
+      setSuccess(data.message || "Order history cleared");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear orders");
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const filtered =
     filter === "ALL" ? orders : orders.filter((o) => o.status === filter);
 
@@ -123,12 +152,22 @@ export default function AdminOrdersPage() {
             final.
           </p>
         </div>
-        <button
-          onClick={load}
-          className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
-        >
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={load}
+            className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+          >
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </button>
+          <button
+            onClick={clearHistory}
+            disabled={clearing || orders.length === 0}
+            className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-40"
+          >
+            <Trash2 className="h-4 w-4" />
+            {clearing ? "Clearing…" : "Clear order history"}
+          </button>
+        </div>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
@@ -160,6 +199,11 @@ export default function AdminOrdersPage() {
       {error && (
         <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           {error}
+        </div>
+      )}
+      {success && (
+        <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+          {success}
         </div>
       )}
 

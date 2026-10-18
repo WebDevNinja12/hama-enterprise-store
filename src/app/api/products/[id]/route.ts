@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import {
-  assertHttpsImageUrl,
-  deleteBlobIfOurs,
-  verifyRemoteImage,
-} from "@/lib/blob";
+import { assertHttpsImageUrl, deleteBlobIfOurs } from "@/lib/blob";
 
 const updateSchema = z.object({
   name: z.string().min(2).optional(),
@@ -54,15 +50,6 @@ export async function PATCH(
     if (data.imageUrl !== undefined) {
       try {
         const next = assertHttpsImageUrl(data.imageUrl, "imageUrl");
-        if (next) {
-          const check = await verifyRemoteImage(next);
-          if (!check.ok) {
-            return NextResponse.json(
-              { error: check.error || "Image URL could not be verified" },
-              { status: 400 }
-            );
-          }
-        }
         if (next !== existing.imageUrl) {
           await deleteBlobIfOurs(existing.imageUrl);
         }
@@ -104,8 +91,12 @@ export async function DELETE(
     }
 
     await deleteBlobIfOurs(existing.imageUrl);
-    await deleteBlobIfOurs(existing.videoUrl);
-    await deleteBlobIfOurs(existing.posterUrl);
+    try {
+      await deleteBlobIfOurs(existing.videoUrl);
+      await deleteBlobIfOurs(existing.posterUrl);
+    } catch {
+      /* columns may be empty */
+    }
 
     await prisma.storeProduct.delete({ where: { id } });
     return NextResponse.json({ ok: true });

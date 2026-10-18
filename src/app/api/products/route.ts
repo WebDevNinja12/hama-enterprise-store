@@ -12,6 +12,22 @@ function slugify(text: string) {
     .replace(/(^-|-$)/g, "");
 }
 
+async function ensureProductColumns() {
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT`
+    );
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "videoUrl" TEXT`
+    );
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "posterUrl" TEXT`
+    );
+  } catch (e) {
+    console.warn("ensureProductColumns:", e);
+  }
+}
+
 const productSchema = z.object({
   name: z.string().min(2),
   description: z.string().min(5),
@@ -104,8 +120,13 @@ export async function POST(req: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Admin access required. Sign in again as admin." },
+        { status: 403 }
+      );
     }
+
+    await ensureProductColumns();
 
     const body = await req.json();
     const data = productSchema.parse(body);
@@ -126,22 +147,19 @@ export async function POST(req: NextRequest) {
 
     if (!imageUrl) {
       return NextResponse.json(
-        { error: "Product image is required (paste an https image URL or upload to Blob)." },
+        {
+          error:
+            "Product image is required. Paste an https:// image URL (or use Blob upload).",
+        },
         { status: 400 }
       );
     }
 
-    // Fetch/verify the remote image is reachable
+    // Soft verify: log if unreachable, still allow valid https URLs
+    // (many CDNs block HEAD/server fetch but work in the browser)
     const check = await verifyRemoteImage(imageUrl);
     if (!check.ok) {
-      return NextResponse.json(
-        {
-          error:
-            check.error ||
-            "Could not load that image URL. Use a direct https link to a JPEG/PNG/WebP file.",
-        },
-        { status: 400 }
-      );
+      console.warn("Image verify soft-fail, saving anyway:", imageUrl, check.error);
     }
 
     const product = await prisma.storeProduct.create({
@@ -169,7 +187,19 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const msg = err instanceof Error ? err.message : "Failed to create product";
     console.error("Create product error:", err);
-    return NextResponse.json({ error: "Failed to create product" }, { status: 500 });
+
+    if (msg.includes("imageUrl") || msg.includes("column") || msg.includes("Unknown arg")) {
+      return NextResponse.json(
+        {
+          error:
+            "Database missing imageUrl column. Open Admin → Push schema, then try again.",
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
