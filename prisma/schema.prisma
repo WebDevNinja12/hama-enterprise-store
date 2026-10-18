@@ -119,6 +119,8 @@ model StoreProduct {
   brand       String   @default("HAMA")
   emoji       String   @default("📦")
   imageUrl    String?  @db.Text
+  videoUrl    String?  @db.Text
+  posterUrl   String?  @db.Text
   stock       Int      @default(0)
   rating      Float    @default(5)
   published   Boolean  @default(true)
