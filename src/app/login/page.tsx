@@ -10,6 +10,7 @@ function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
   const callbackUrl = search.get("callbackUrl") || "/account";
+  const reason = search.get("reason");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,7 +26,6 @@ function LoginForm() {
       redirect: false,
     });
     if (res?.error) {
-      // NextAuth may surface CredentialsSignin for EMAIL_NOT_VERIFIED too
       setError(
         "Invalid email/password, or email not verified. Check your inbox for the OTP and finish registration."
       );
@@ -44,6 +44,12 @@ function LoginForm() {
       <p className="mb-6 text-sm text-[var(--muted)]">
         Sign in to checkout and view your orders
       </p>
+      {reason === "idle" && (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Your session expired due to inactivity (admin: 5 min, customers: 15
+          min). Please sign in again.
+        </div>
+      )}
       {callbackUrl.includes("checkout") && (
         <div className="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-300">
           You need an account to checkout. Sign in or{" "}
