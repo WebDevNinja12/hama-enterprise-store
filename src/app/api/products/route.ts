@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { products as seedProducts } from "@/lib/products";
+import { products as fallbackCatalog } from "@/lib/products";
 
 function slugify(text: string) {
   return text
@@ -20,7 +20,17 @@ const productSchema = z.object({
   category: z.string().min(1),
   brand: z.string().optional(),
   emoji: z.string().optional(),
-  imageUrl: z.string().url().optional().nullable().or(z.literal("")),
+  // Accept any http(s) URL or empty — do not force strict Zod url()
+  imageUrl: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((v) => {
+      if (v == null) return null;
+      const t = String(v).trim();
+      if (!t) return null;
+      return t;
+    }),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -42,6 +52,7 @@ function mapDbProduct(p: {
   description: string;
   published: boolean;
 }) {
+  const imageUrl = p.imageUrl?.trim() || null;
   return {
     id: p.id,
     name: p.name,
@@ -51,8 +62,9 @@ function mapDbProduct(p: {
     category: p.category,
     brand: p.brand,
     emoji: p.emoji,
-    image: p.imageUrl || undefined,
-    imageUrl: p.imageUrl || undefined,
+    // Always surface custom image first — never replace with auto image
+    image: imageUrl || undefined,
+    imageUrl: imageUrl || undefined,
     stock: p.stock,
     rating: p.rating,
     description: p.description,
@@ -64,6 +76,7 @@ function mapDbProduct(p: {
 export async function GET(req: NextRequest) {
   try {
     const adminFlag = req.nextUrl.searchParams.get("admin") === "1";
+    const slug = req.nextUrl.searchParams.get("slug");
     let isAdmin = false;
 
     if (adminFlag) {
@@ -74,50 +87,65 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Single product by slug (DB first)
+    if (slug) {
+      const db = await prisma.storeProduct.findFirst({
+        where: isAdmin ? { slug } : { slug, published: true },
+      });
+      if (db) {
+        return NextResponse.json({ product: mapDbProduct(db) });
+      }
+      const fb = fallbackCatalog.find((p) => p.slug === slug);
+      if (fb) {
+        return NextResponse.json({
+          product: {
+            ...fb,
+            image: fb.image,
+            imageUrl: fb.image,
+            published: true,
+            source: "catalog",
+          },
+        });
+      }
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const dbProducts = await prisma.storeProduct.findMany({
       where: isAdmin ? undefined : { published: true },
       orderBy: { createdAt: "desc" },
     });
 
     const mapped = dbProducts.map(mapDbProduct);
-    const dbSlugs = new Set(dbProducts.map((p) => p.slug));
-    const seeds = seedProducts
-      .filter((p) => !dbSlugs.has(p.slug))
-      .map((p) => ({
-        id: `seed-${p.id}`,
-        name: p.name,
-        slug: p.slug,
-        price: p.price,
-        compareAt: p.compareAt,
-        category: p.category,
-        brand: p.brand,
-        emoji: p.emoji || "📦",
+
+    // Public store: ONLY real DB products when any exist
+    if (!isAdmin) {
+      if (mapped.length > 0) {
+        return NextResponse.json({
+          products: mapped,
+          outOfStock: mapped.filter((p) => p.stock <= 0).length,
+          lowStock: mapped.filter((p) => p.stock > 0 && p.stock <= 5).length,
+        });
+      }
+      // Empty DB → show real HAMA catalog fallback (not sci-fi demos)
+      const list = fallbackCatalog.map((p) => ({
+        ...p,
         image: p.image,
         imageUrl: p.image,
-        stock: p.stock,
-        rating: p.rating,
-        description: p.description,
         published: true,
-        source: "seed" as const,
+        source: "catalog" as const,
       }));
-
-    if (isAdmin) {
-      const all = [...mapped, ...seeds];
       return NextResponse.json({
-        products: all,
-        outOfStock: all.filter((p) => p.stock <= 0).length,
-        lowStock: all.filter((p) => p.stock > 0 && p.stock <= 5).length,
+        products: list,
+        outOfStock: list.filter((p) => p.stock <= 0).length,
+        lowStock: list.filter((p) => p.stock > 0 && p.stock <= 5).length,
       });
     }
 
-    const publicList = [
-      ...mapped.filter((p) => p.published),
-      ...seeds,
-    ];
+    // Admin: DB + note if empty
     return NextResponse.json({
-      products: publicList,
-      outOfStock: publicList.filter((p) => p.stock <= 0).length,
-      lowStock: publicList.filter((p) => p.stock > 0 && p.stock <= 5).length,
+      products: mapped,
+      outOfStock: mapped.filter((p) => p.stock <= 0).length,
+      lowStock: mapped.filter((p) => p.stock > 0 && p.stock <= 5).length,
     });
   } catch (err) {
     console.error("List products error:", err);
@@ -141,10 +169,13 @@ export async function POST(req: NextRequest) {
       slug = `${slug}-${Date.now().toString(36)}`;
     }
 
-    const imageUrl =
-      data.imageUrl && String(data.imageUrl).trim()
-        ? String(data.imageUrl).trim()
-        : null;
+    let imageUrl = data.imageUrl;
+    if (imageUrl && !/^https?:\/\//i.test(imageUrl) && !imageUrl.startsWith("/")) {
+      return NextResponse.json(
+        { error: "Image URL must start with http:// or https://" },
+        { status: 400 }
+      );
+    }
 
     const product = await prisma.storeProduct.create({
       data: {
@@ -156,7 +187,7 @@ export async function POST(req: NextRequest) {
         category: data.category.trim(),
         brand: data.brand?.trim() || "HAMA",
         emoji: data.emoji?.trim() || "📦",
-        imageUrl,
+        imageUrl: imageUrl,
         stock: data.stock ?? 0,
         rating: data.rating ?? 5,
         published: data.published ?? true,

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Star, ShoppingCart } from "lucide-react";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { products as seedProducts, productImage, type Product } from "@/lib/products";
+import { productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
 import SafeImage from "@/components/SafeImage";
 
@@ -13,48 +13,50 @@ function CatalogInner() {
   const searchParams = useSearchParams();
   const qParam = (searchParams.get("q") || "").trim().toLowerCase();
   const [category, setCategory] = useState("All");
-  const [message, setMessage] = useState<{ id: string; text: string } | null>(
-    null
-  );
-  const [dbProducts, setDbProducts] = useState<Product[]>([]);
+  const [message, setMessage] = useState<{ id: string; text: string } | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetch("/api/products")
       .then((r) => r.json())
       .then((data) => {
         const list = (data.products || []).map(
-          (p: Product & { id: string; image?: string }) => ({
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            price: Number(p.price),
-            compareAt: p.compareAt ? Number(p.compareAt) : undefined,
-            rating: p.rating ?? 5,
-            category: p.category,
-            brand: p.brand || "HAMA",
-            description: p.description || "",
-            image: p.image || productImage(p),
-            stock: p.stock ?? 0,
-          })
+          (p: Product & { imageUrl?: string }) => {
+            const img = productImage({
+              imageUrl: p.imageUrl,
+              image: p.image,
+            });
+            return {
+              id: p.id,
+              name: p.name,
+              slug: p.slug,
+              price: Number(p.price),
+              compareAt: p.compareAt ? Number(p.compareAt) : undefined,
+              rating: p.rating ?? 5,
+              category: p.category,
+              brand: p.brand || "HAMA",
+              description: p.description || "",
+              image: img,
+              imageUrl: p.imageUrl || img,
+              stock: p.stock ?? 0,
+            };
+          }
         );
-        setDbProducts(list);
+        setProducts(list);
       })
-      .catch(() => {});
+      .catch(() => setProducts([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const allProducts = useMemo(() => {
-    const ids = new Set(dbProducts.map((p) => p.slug));
-    const seeds = seedProducts.filter((p) => !ids.has(p.slug));
-    return [...dbProducts, ...seeds];
-  }, [dbProducts]);
-
   const categories = useMemo(() => {
-    const set = new Set(allProducts.map((p) => p.category));
+    const set = new Set(products.map((p) => p.category));
     return ["All", ...Array.from(set).sort()];
-  }, [allProducts]);
+  }, [products]);
 
   const filtered = useMemo(() => {
-    let list = allProducts;
+    let list = products;
     if (category !== "All") list = list.filter((p) => p.category === category);
     if (qParam) {
       list = list.filter(
@@ -66,7 +68,7 @@ function CatalogInner() {
       );
     }
     return list;
-  }, [category, allProducts, qParam]);
+  }, [category, products, qParam]);
 
   function flash(id: string, text: string) {
     setMessage({ id, text });
@@ -98,13 +100,13 @@ function CatalogInner() {
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-8">
         <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-cyan-400">
-          Hardware Catalog / 2026 Edition
+          HAMA ENTERPRISE NG · Catalog
         </p>
         <h1 className="text-3xl font-bold text-[var(--heading)]">
-          Advanced Tech Inventory
+          Store products
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          {filtered.length} products
+          {loading ? "Loading…" : `${filtered.length} products`}
           {qParam ? ` matching “${qParam}”` : ""}
         </p>
       </div>
@@ -125,85 +127,92 @@ function CatalogInner() {
         ))}
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((p) => {
-          const inCart = getQtyInCart(p.id);
-          const atMax = p.stock > 0 && inCart >= p.stock;
-          const soldOut = p.stock <= 0;
-          const img = productImage(p);
+      {loading ? (
+        <p className="text-[var(--muted)]">Loading products…</p>
+      ) : filtered.length === 0 ? (
+        <div className="card p-10 text-center text-[var(--muted)]">
+          No products yet. Admin can add real products with image URLs in the admin panel.
+        </div>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((p) => {
+            const inCart = getQtyInCart(p.id);
+            const atMax = p.stock > 0 && inCart >= p.stock;
+            const soldOut = p.stock <= 0;
+            const img = productImage(p);
 
-          return (
-            <div key={p.id} className="card group overflow-hidden">
-              <Link href={`/product/${p.slug}`}>
-                <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface)]">
-                  <SafeImage
-                    src={img}
-                    alt={p.name}
-                    fill
-                    useFill
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                    className="object-cover transition duration-300 group-hover:scale-105"
-                  />
-                  <span className="absolute left-3 top-3 badge badge-cyan text-[10px]">
-                    {p.category.toUpperCase()}
-                  </span>
-                  {soldOut && (
-                    <span className="absolute right-3 top-3 badge badge-danger text-[10px]">
-                      SOLD OUT
-                    </span>
-                  )}
-                  {!soldOut && atMax && (
-                    <span className="absolute right-3 top-3 badge badge-warning text-[10px]">
-                      MAX IN CART
-                    </span>
-                  )}
-                </div>
-              </Link>
-              <div className="p-4">
-                <p className="text-xs text-[var(--muted)]">{p.brand}</p>
+            return (
+              <div key={p.id} className="card group overflow-hidden">
                 <Link href={`/product/${p.slug}`}>
-                  <h3 className="mb-1 font-semibold text-[var(--heading)] group-hover:text-cyan-400">
-                    {p.name}
-                  </h3>
+                  <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface)]">
+                    <SafeImage
+                      src={img}
+                      alt={p.name}
+                      fill
+                      useFill
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      className="object-cover transition duration-300 group-hover:scale-105"
+                    />
+                    <span className="absolute left-3 top-3 badge badge-cyan text-[10px]">
+                      {p.category.toUpperCase()}
+                    </span>
+                    {soldOut && (
+                      <span className="absolute right-3 top-3 badge badge-danger text-[10px]">
+                        SOLD OUT
+                      </span>
+                    )}
+                  </div>
                 </Link>
-                <div className="mb-1 flex items-center gap-1 text-xs text-cyan-400">
-                  <Star className="h-3 w-3 fill-current" />
-                  {p.rating}
-                </div>
-                <p className="mb-2 text-xs text-[var(--muted)]">
-                  Stock: {p.stock}
-                  {inCart > 0 ? ` · In cart: ${inCart}` : ""}
-                </p>
-                {message?.id === p.id && (
-                  <p className="mb-2 text-xs font-medium text-cyan-400">
-                    {message.text}
+                <div className="p-4">
+                  <p className="text-xs text-[var(--muted)]">{p.brand}</p>
+                  <Link href={`/product/${p.slug}`}>
+                    <h3 className="mb-1 font-semibold text-[var(--heading)] group-hover:text-cyan-400">
+                      {p.name}
+                    </h3>
+                  </Link>
+                  <div className="mb-1 flex items-center gap-1 text-xs text-cyan-400">
+                    <Star className="h-3 w-3 fill-current" />
+                    {p.rating}
+                  </div>
+                  <p className="mb-2 text-xs text-[var(--muted)]">
+                    Stock: {p.stock}
+                    {inCart > 0 ? ` · In cart: ${inCart}` : ""}
                   </p>
-                )}
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-lg font-bold text-[var(--heading)]">
-                    ${p.price.toLocaleString()}
-                  </p>
-                  <button
-                    onClick={() => handleAdd(p)}
-                    disabled={soldOut || atMax}
-                    className="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ShoppingCart className="h-3.5 w-3.5" />
-                    {soldOut ? "Max reached" : atMax ? "Max in cart" : "Add"}
-                  </button>
+                  {message?.id === p.id && (
+                    <p className="mb-2 text-xs font-medium text-cyan-400">
+                      {message.text}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-lg font-bold text-[var(--heading)]">
+                      ${p.price.toLocaleString()}
+                    </p>
+                    <button
+                      onClick={() => handleAdd(p)}
+                      disabled={soldOut || atMax}
+                      className="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5" />
+                      {soldOut ? "Max reached" : atMax ? "Max in cart" : "Add"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
 export default function CatalogPage() {
   return (
-    <Suspense fallback={<div className="p-10 text-center text-[var(--muted)]">Loading catalog…</div>}>
+    <Suspense
+      fallback={
+        <div className="p-10 text-center text-[var(--muted)]">Loading catalog…</div>
+      }
+    >
       <CatalogInner />
     </Suspense>
   );

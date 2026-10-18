@@ -8,125 +8,146 @@ export type Product = {
   category: string;
   brand: string;
   description: string;
-  /** @deprecated use image */
   emoji?: string;
   image: string;
+  imageUrl?: string;
   stock: number;
 };
 
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=800&q=80";
+
+/** Prefer explicit imageUrl / image — never invent a random product photo */
+export function productImage(p: {
+  image?: string | null;
+  imageUrl?: string | null;
+  emoji?: string;
+  name?: string;
+}) {
+  const url = (p.imageUrl || p.image || "").trim();
+  if (url && (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/"))) {
+    return url;
+  }
+  return FALLBACK_IMAGE;
+}
+
+/**
+ * Real HAMA ENTERPRISE NG catalog (physical goods).
+ * Used only as fallback when the database has no published products yet.
+ */
 export const products: Product[] = [
   {
-    id: "1",
-    name: "Synapse-X Headset",
-    slug: "synapse-x",
-    price: 1299,
-    compareAt: 1499,
-    rating: 4.9,
-    category: "Neural",
-    brand: "Nexus Core",
-    description:
-      "Neural-interface headset with sub-millisecond latency, spatial audio, and adaptive noise cancelation for immersive work and play.",
-    image:
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80",
-    stock: 24,
-  },
-  {
-    id: "2",
-    name: "HoloLens Pro 3",
-    slug: "hololens-pro-3",
-    price: 849,
+    id: "real-1",
+    name: "Industrial Safety Helmet",
+    slug: "industrial-safety-helmet",
+    price: 45,
     rating: 4.8,
-    category: "Optics",
-    brand: "AetherDynamics",
+    category: "Safety",
+    brand: "HAMA",
     description:
-      "Next-gen mixed reality optics with 8K per-eye micro OLED and all-day battery for spatial computing.",
+      "Hard hat for construction and site work. Adjustable fit, impact-resistant shell, compliant with common site safety standards.",
     image:
-      "https://images.unsplash.com/photo-1622979135225-d2ba269cf1ac?auto=format&fit=crop&w=800&q=80",
-    stock: 18,
+      "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&w=800&q=80",
+    stock: 120,
   },
   {
-    id: "3",
-    name: "Q-Cube Core V2",
-    slug: "q-cube-core-v2",
-    price: 3499,
-    rating: 5.0,
-    category: "Quantum",
-    brand: "Vanguard Labs",
-    description:
-      "Desktop quantum processing unit for advanced simulation, cryptography, and AI workloads.",
-    image:
-      "https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?auto=format&fit=crop&w=800&q=80",
-    stock: 6,
-  },
-  {
-    id: "4",
-    name: "Titan Arm Bracer",
-    slug: "titan-arm-bracer",
-    price: 2150,
+    id: "real-2",
+    name: "Heavy-Duty Work Gloves (Pair)",
+    slug: "heavy-duty-work-gloves",
+    price: 18,
     rating: 4.7,
-    category: "Exosuit",
-    brand: "Nexus Core",
+    category: "Safety",
+    brand: "HAMA",
     description:
-      "Powered arm bracer with haptic feedback and strength assist for industrial and field use.",
+      "Durable gloves for warehouse and field use. Reinforced palm, good grip for tools and materials handling.",
     image:
-      "https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=800&q=80",
-    stock: 12,
+      "https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?auto=format&fit=crop&w=800&q=80",
+    stock: 200,
   },
   {
-    id: "5",
-    name: "NeuroLink Node Mini",
-    slug: "neurolink-node-mini",
-    price: 499,
+    id: "real-3",
+    name: "Power Drill 18V Kit",
+    slug: "power-drill-18v-kit",
+    price: 189,
+    compareAt: 220,
+    rating: 4.9,
+    category: "Tools",
+    brand: "HAMA",
+    description:
+      "Cordless drill kit with battery and charger. Suitable for wood, metal, and general site installation work.",
+    image:
+      "https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=800&q=80",
+    stock: 35,
+  },
+  {
+    id: "real-4",
+    name: "Steel Measuring Tape 5m",
+    slug: "steel-measuring-tape-5m",
+    price: 12,
     rating: 4.6,
-    category: "Neural",
-    brand: "AetherDynamics",
-    description:
-      "Compact neural interface node for focus, sleep tracking, and ambient computing control.",
-    image:
-      "https://images.unsplash.com/photo-1558082410-8d2cd8c8f0e4?auto=format&fit=crop&w=800&q=80",
-    stock: 40,
-  },
-  {
-    id: "6",
-    name: "Vision-X Contacts",
-    slug: "vision-x-contacts",
-    price: 1599,
-    rating: 4.9,
-    category: "Optics",
-    brand: "Vanguard Labs",
-    description:
-      "Smart contact lenses with AR overlay, health sensors, and discreet always-on display.",
-    image:
-      "https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=800&q=80",
-    stock: 15,
-  },
-  {
-    id: "7",
-    name: "AuraBuds Pro Neural",
-    slug: "aurabuds-pro",
-    price: 299,
-    rating: 4.8,
-    category: "Audio",
+    category: "Tools",
     brand: "HAMA",
     description:
-      "Spatial earbuds with neural noise cancelation and adaptive EQ for studio-grade listening.",
+      "5-metre steel tape with lock button and belt clip. Clear markings for accurate site measurements.",
     image:
-      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80",
-    stock: 55,
+      "https://images.unsplash.com/photo-1572981779307-38b8cabb2407?auto=format&fit=crop&w=800&q=80",
+    stock: 150,
   },
   {
-    id: "8",
-    name: "Nexus Ring Gen-3",
-    slug: "nexus-ring-gen-3",
-    price: 349,
+    id: "real-5",
+    name: "LED Work Flood Light",
+    slug: "led-work-flood-light",
+    price: 65,
     rating: 4.7,
-    category: "Wearables",
+    category: "Electrical",
     brand: "HAMA",
     description:
-      "Smart ring with biometrics, payments, and two-week battery life in a titanium shell.",
+      "Bright portable LED flood light for workshops and outdoor jobs. Stand mount and durable housing.",
     image:
-      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=800&q=80",
-    stock: 30,
+      "https://images.unsplash.com/photo-1565814636199-ae8133055c1c?auto=format&fit=crop&w=800&q=80",
+    stock: 48,
+  },
+  {
+    id: "real-6",
+    name: "Extension Cable 20m",
+    slug: "extension-cable-20m",
+    price: 38,
+    rating: 4.5,
+    category: "Electrical",
+    brand: "HAMA",
+    description:
+      "Heavy-duty 20-metre extension cable for site power. Suitable for tools and temporary lighting.",
+    image:
+      "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=800&q=80",
+    stock: 80,
+  },
+  {
+    id: "real-7",
+    name: "Cement Mixer 120L",
+    slug: "cement-mixer-120l",
+    price: 420,
+    rating: 4.8,
+    category: "Machinery",
+    brand: "HAMA",
+    description:
+      "120-litre drum mixer for small to medium concrete jobs. Portable frame for site mobility.",
+    image:
+      "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80",
+    stock: 10,
+  },
+  {
+    id: "real-8",
+    name: "Wheelbarrow Heavy Duty",
+    slug: "wheelbarrow-heavy-duty",
+    price: 95,
+    rating: 4.6,
+    category: "Machinery",
+    brand: "HAMA",
+    description:
+      "Steel tray wheelbarrow for sand, cement, and site debris. Puncture-resistant wheel.",
+    image:
+      "https://images.unsplash.com/photo-1581094794329-c8112c4e5190?auto=format&fit=crop&w=800&q=80",
+    stock: 25,
   },
 ];
 
@@ -136,11 +157,4 @@ export function getProductBySlug(slug: string) {
 
 export function getProductById(id: string) {
   return products.find((p) => p.id === id);
-}
-
-export function productImage(p: { image?: string; emoji?: string; name?: string }) {
-  return (
-    p.image ||
-    `https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80`
-  );
 }

@@ -3,18 +3,61 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Star, ShoppingCart, ArrowLeft } from "lucide-react";
-import { useState } from "react";
-import { getProductBySlug, productImage } from "@/lib/products";
+import { useEffect, useState } from "react";
+import { productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
+import SafeImage from "@/components/SafeImage";
 
 export default function ProductPage() {
   const params = useParams();
   const router = useRouter();
   const slug = params.slug as string;
-  const product = getProductBySlug(slug);
   const { addItem } = useCart();
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/products?slug=${encodeURIComponent(slug)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.product) {
+          const p = data.product;
+          const img = productImage({
+            imageUrl: p.imageUrl,
+            image: p.image,
+          });
+          setProduct({
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            price: Number(p.price),
+            compareAt: p.compareAt != null ? Number(p.compareAt) : undefined,
+            rating: p.rating ?? 5,
+            category: p.category,
+            brand: p.brand || "HAMA",
+            description: p.description || "",
+            image: img,
+            imageUrl: p.imageUrl || img,
+            stock: p.stock ?? 0,
+          });
+        } else {
+          setProduct(null);
+        }
+      })
+      .catch(() => setProduct(null))
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-20 text-center text-[var(--muted)]">
+        Loading product…
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -54,12 +97,14 @@ export default function ProductPage() {
       </Link>
 
       <div className="grid gap-10 lg:grid-cols-2">
-        <div className="card overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+        <div className="card relative aspect-square overflow-hidden">
+          <SafeImage
             src={img}
             alt={product.name}
-            className="aspect-square w-full object-cover"
+            fill
+            useFill
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            className="object-cover"
           />
         </div>
 
@@ -100,7 +145,7 @@ export default function ProductPage() {
               </button>
               <span className="w-10 text-center text-[var(--heading)]">{qty}</span>
               <button
-                onClick={() => setQty(Math.min(99, qty + 1))}
+                onClick={() => setQty(Math.min(product.stock || 99, qty + 1))}
                 className="px-3 py-2 text-[var(--heading)] hover:bg-white/5"
               >
                 +
@@ -111,14 +156,20 @@ export default function ProductPage() {
           <div className="flex flex-wrap gap-3">
             <button
               onClick={handleAdd}
-              className="btn-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm"
+              disabled={product.stock <= 0}
+              className="btn-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm disabled:opacity-40"
             >
               <ShoppingCart className="h-4 w-4" />
-              {added ? "Added to cart!" : "Add to Cart"}
+              {product.stock <= 0
+                ? "Out of stock"
+                : added
+                  ? "Added to cart!"
+                  : "Add to Cart"}
             </button>
             <button
               onClick={handleBuyNow}
-              className="btn-secondary rounded-xl px-6 py-3 text-sm"
+              disabled={product.stock <= 0}
+              className="btn-secondary rounded-xl px-6 py-3 text-sm disabled:opacity-40"
             >
               Buy Now
             </button>
