@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-/**
- * Admin-only: ensure StoreProduct.imageUrl column exists (PostgreSQL).
- * Safe to call multiple times.
- */
+/** Admin-only: ensure columns + search indexes exist */
 export async function POST() {
   try {
     const session = await auth();
@@ -18,16 +15,38 @@ export async function POST() {
       ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;
     `);
 
+    // Email already unique-indexed by Prisma @@unique
+
+    // Full-text expression index for product search
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "StoreProduct_fts_idx"
+      ON "StoreProduct"
+      USING GIN (
+        to_tsvector(
+          'english',
+          coalesce(name, '') || ' ' || coalesce(category, '') || ' ' || coalesce(brand, '')
+        )
+      );
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "StoreProduct_name_trgm_idx"
+      ON "StoreProduct" (name);
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "StoreProduct_published_idx"
+      ON "StoreProduct" (published);
+    `);
+
     return NextResponse.json({
       ok: true,
-      message: "StoreProduct.imageUrl column is ready",
+      message: "Schema + search indexes ready",
     });
   } catch (err) {
     console.error("ensure-schema error:", err);
     return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : "Schema update failed",
-      },
+      { error: err instanceof Error ? err.message : "Schema update failed" },
       { status: 500 }
     );
   }

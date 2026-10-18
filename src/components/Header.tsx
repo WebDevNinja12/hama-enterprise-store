@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   ShoppingCart,
   User,
-  Search,
   Menu,
   X,
   Sun,
@@ -17,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useCart } from "@/context/CartContext";
 import { useTheme } from "@/context/ThemeContext";
 import Logo from "@/components/Logo";
+import SearchBar from "@/components/SearchBar";
 
 const navLinks = [
   { href: "/", label: "Store" },
@@ -37,14 +37,7 @@ export default function Header() {
       <div className="mx-auto flex h-[4.25rem] max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
         <Logo />
 
-        <div className="relative mx-2 hidden flex-1 max-w-sm md:block lg:mx-6">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-          <input
-            type="search"
-            placeholder="Search gadgets..."
-            className="input h-10 rounded-full pl-10 text-sm"
-          />
-        </div>
+        <SearchBar className="mx-2 hidden max-w-sm flex-1 md:block lg:mx-6" />
 
         <nav className="ml-auto hidden items-center gap-0.5 md:flex">
           {navLinks.map((link) => (
@@ -117,6 +110,7 @@ export default function Header() {
 
       {mobileOpen && (
         <div className="border-t border-[var(--border)] bg-[var(--card-solid)] px-4 py-3 md:hidden">
+          <SearchBar className="mb-3" />
           <nav className="flex flex-col gap-0.5">
             {navLinks.map((link) => (
               <Link

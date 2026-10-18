@@ -20,20 +20,29 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    // Redirect immediately on success — cart/orders/profile load on destination
     const res = await signIn("credentials", {
       email: email.trim().toLowerCase(),
       password,
       redirect: false,
     });
+
     if (res?.error) {
-      setError(
-        "Invalid email/password, or email not verified. Check your inbox for the OTP and finish registration."
-      );
+      if (res.error === "LOGIN_LOCKED" || String(res.error).includes("LOCKED")) {
+        setError("Too many failed attempts. Wait 5 minutes and try again.");
+      } else {
+        setError(
+          "Invalid email/password, or email not verified. Check your inbox for the OTP."
+        );
+      }
       setLoading(false);
-    } else {
-      router.push(callbackUrl);
-      router.refresh();
+      return;
     }
+
+    // Immediate redirect — do not await heavy work
+    router.replace(callbackUrl);
+    router.refresh();
   }
 
   return (
