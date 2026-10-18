@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { products as fallbackCatalog } from "@/lib/products";
 import { assertProductMediaUrl, isVercelBlobUrl } from "@/lib/blob";
 
 function slugify(text: string) {
@@ -89,18 +88,6 @@ export async function GET(req: NextRequest) {
       if (db) {
         return NextResponse.json({ product: mapDbProduct(db) });
       }
-      const fb = fallbackCatalog.find((p) => p.slug === slug);
-      if (fb) {
-        return NextResponse.json({
-          product: {
-            ...fb,
-            image: fb.image,
-            imageUrl: fb.image,
-            published: true,
-            source: "catalog",
-          },
-        });
-      }
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -110,28 +97,6 @@ export async function GET(req: NextRequest) {
     });
 
     const mapped = dbProducts.map(mapDbProduct);
-
-    if (!isAdmin) {
-      if (mapped.length > 0) {
-        return NextResponse.json({
-          products: mapped,
-          outOfStock: mapped.filter((p) => p.stock <= 0).length,
-          lowStock: mapped.filter((p) => p.stock > 0 && p.stock <= 5).length,
-        });
-      }
-      const list = fallbackCatalog.map((p) => ({
-        ...p,
-        image: p.image,
-        imageUrl: p.image,
-        published: true,
-        source: "catalog" as const,
-      }));
-      return NextResponse.json({
-        products: list,
-        outOfStock: 0,
-        lowStock: 0,
-      });
-    }
 
     return NextResponse.json({
       products: mapped,
@@ -187,7 +152,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "imageUrl must be the exact https URL returned by Vercel Blob upload (not a filename, blob: preview, or base64).",
+            "imageUrl must be the exact https URL returned by Vercel Blob upload.",
         },
         { status: 400 }
       );

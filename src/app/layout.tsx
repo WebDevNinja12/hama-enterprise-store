@@ -9,9 +9,9 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "HAMA ENTERPRISE NG | Next-Gen Hardware Store",
+  title: "HAMA ENTERPRISE NG | Official Store",
   description:
-    "Official store of HAMA ENTERPRISE NG (RC: 8827959). Premium high-tech gadgets, wearables, AR hardware and more.",
+    "Official store of HAMA ENTERPRISE NG (RC: 8827959). Real products, secure checkout, and order tracking.",
 };
 
 const themeInitScript = `

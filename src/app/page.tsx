@@ -1,73 +1,39 @@
+"use client";
+
 import Link from "next/link";
-import { ArrowRight, Zap, Star, Shield, Truck, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Zap, Shield, Truck } from "lucide-react";
 import Logo from "@/components/Logo";
+import SafeImage from "@/components/SafeImage";
+import { productImage } from "@/lib/products";
 
-const categories = [
-  {
-    id: "1",
-    name: "Immersive Audio",
-    description: "Spatial acoustics with neural noise cancelation.",
-    tag: "01 · SOUND",
-    image:
-      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "2",
-    name: "Smart Wearables",
-    description: "Biometric tracking with quantum sensors.",
-    tag: "02 · BODY",
-    image:
-      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "3",
-    name: "Smart Home",
-    description: "Ambient control and security nodes.",
-    tag: "03 · HABITAT",
-    image:
-      "https://images.unsplash.com/photo-1558002038-1055907df827?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "4",
-    name: "Next-Gen Gaming",
-    description: "Haptic gear with sub-ms response.",
-    tag: "04 · PLAY",
-    image:
-      "https://images.unsplash.com/photo-1622979135225-d2ba269cf1ac?auto=format&fit=crop&w=600&q=80",
-  },
-];
-
-const featured = [
-  {
-    id: "1",
-    name: "AuraBuds Pro Neural",
-    price: 299,
-    tag: "BESTSELLER",
-    category: "Audio",
-    image:
-      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "2",
-    name: "Nexus Ring Gen-3",
-    price: 349,
-    tag: "NEW",
-    category: "Wearables",
-    image:
-      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    id: "3",
-    name: "HoloBeam Nano",
-    price: 599,
-    tag: "LIMITED",
-    category: "Optics",
-    image:
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80",
-  },
-];
+type HomeProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  price: number;
+  category: string;
+  brand: string;
+  image?: string;
+  imageUrl?: string;
+};
 
 export default function HomePage() {
+  const [products, setProducts] = useState<HomeProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/products")
+      .then((r) => r.json())
+      .then((data) => setProducts((data.products || []).slice(0, 6)))
+      .catch(() => setProducts([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const categories = [
+    ...new Set(products.map((p) => p.category).filter(Boolean)),
+  ].slice(0, 4);
+
   return (
     <div className="pb-20">
       <section className="relative overflow-hidden">
@@ -79,8 +45,7 @@ export default function HomePage() {
         <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-28">
           <div className="flex flex-col justify-center">
             <div className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3.5 py-1.5 text-xs font-semibold text-cyan-400">
-              <Sparkles className="h-3.5 w-3.5" />
-              Next-gen hardware · 2026
+              HAMA ENTERPRISE NG · RC 8827959
             </div>
 
             <div className="mb-4">
@@ -88,15 +53,15 @@ export default function HomePage() {
             </div>
 
             <h1 className="mb-5 text-4xl font-bold leading-[1.1] tracking-tight text-[var(--heading)] sm:text-5xl lg:text-6xl">
-              Experience reality,{" "}
+              Quality supplies from{" "}
               <span className="bg-gradient-to-r from-cyan-400 via-cyan-300 to-blue-400 bg-clip-text text-transparent">
-                redefined by Hama.
+                HAMA ENTERPRISE NG
               </span>
             </h1>
 
             <p className="mb-8 max-w-md text-base leading-relaxed text-[var(--muted)] sm:text-lg">
-              Flagship spatial computing and neural-interface hardware.
-              Immersive visuals, zero latency, infinite workspace.
+              Official online store. Browse real inventory added by our team —
+              tools, materials, and enterprise supplies.
             </p>
 
             <div className="flex flex-wrap gap-3">
@@ -104,7 +69,7 @@ export default function HomePage() {
                 href="/catalog"
                 className="btn-primary inline-flex items-center gap-2 px-7 py-3.5 text-sm"
               >
-                Shop the future <ArrowRight className="h-4 w-4" />
+                Browse catalog <ArrowRight className="h-4 w-4" />
               </Link>
               <a
                 href="https://hama-enterprise-ng.vercel.app/index.html"
@@ -118,26 +83,19 @@ export default function HomePage() {
           </div>
 
           <div className="relative flex justify-center lg:justify-end">
-            <div className="card glow-cyan relative w-full max-w-md overflow-hidden p-2">
-              <div className="aspect-[4/3] overflow-hidden rounded-[16px]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="https://images.unsplash.com/photo-1622979135225-d2ba269cf1ac?auto=format&fit=crop&w=900&q=80"
-                  alt="Nexus Vision X1"
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 p-5">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
-                    Nexus Vision X1
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-[var(--heading)]">$1,499</p>
-                </div>
-                <Link href="/catalog" className="btn-primary px-5 py-2.5 text-sm">
-                  View
-                </Link>
-              </div>
+            <div className="card relative w-full max-w-md overflow-hidden p-6">
+              <p className="text-sm font-semibold text-[var(--heading)]">
+                Shop with confidence
+              </p>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Secure checkout · Account required · Orders managed by HAMA admin
+              </p>
+              <Link
+                href="/catalog"
+                className="btn-primary mt-6 inline-flex px-5 py-2.5 text-sm"
+              >
+                View products
+              </Link>
             </div>
           </div>
         </div>
@@ -146,9 +104,9 @@ export default function HomePage() {
       <section className="border-y border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:grid-cols-3 sm:px-6 lg:px-8">
           {[
-            { icon: Truck, title: "Free shipping", desc: "On orders over $500" },
-            { icon: Shield, title: "Secure checkout", desc: "Encrypted payments" },
-            { icon: Zap, title: "Fast fulfillment", desc: "Ships within 48 hours" },
+            { icon: Truck, title: "Delivery options", desc: "Arranged after order confirmation" },
+            { icon: Shield, title: "Secure checkout", desc: "Encrypted payments & accounts" },
+            { icon: Zap, title: "Real inventory", desc: "Only products added by admin" },
           ].map((item) => (
             <div key={item.title} className="flex items-center gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-400">
@@ -163,141 +121,95 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="section-label mb-2">Ecosystem</p>
-            <h2 className="text-3xl font-bold tracking-tight text-[var(--heading)]">
-              Trending categories
-            </h2>
-          </div>
-          <Link
-            href="/catalog"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-cyan-400 hover:underline"
-          >
-            View all <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {categories.map((cat) => (
-            <Link key={cat.id} href="/catalog" className="card group overflow-hidden">
-              <div className="aspect-[5/3] overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={cat.image}
-                  alt={cat.name}
-                  className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                />
-              </div>
-              <div className="p-5">
-                <p className="mb-1 text-[10px] font-bold tracking-widest text-cyan-400/90">
-                  {cat.tag}
-                </p>
-                <h3 className="mb-1.5 text-base font-semibold text-[var(--heading)]">
-                  {cat.name}
-                </h3>
-                <p className="mb-4 text-sm leading-relaxed text-[var(--muted)]">
-                  {cat.description}
-                </p>
-                <span className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-400">
-                  Explore <ArrowRight className="h-3.5 w-3.5" />
-                </span>
-              </div>
+      {categories.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="section-label mb-2">Categories</p>
+              <h2 className="text-3xl font-bold tracking-tight text-[var(--heading)]">
+                From our catalog
+              </h2>
+            </div>
+            <Link
+              href="/catalog"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-cyan-400 hover:underline"
+            >
+              View all <ArrowRight className="h-4 w-4" />
             </Link>
-          ))}
-        </div>
-      </section>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {categories.map((c) => (
+              <Link
+                key={c}
+                href={`/catalog?q=${encodeURIComponent(c)}`}
+                className="rounded-full border border-[var(--border)] px-4 py-2 text-sm text-[var(--heading)] hover:border-cyan-500/50 hover:text-cyan-400"
+              >
+                {c}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-10">
           <p className="section-label mb-2">Catalog</p>
           <h2 className="text-3xl font-bold tracking-tight text-[var(--heading)]">
-            Featured hardware
+            Latest products
           </h2>
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {featured.map((product) => (
-            <Link key={product.id} href="/catalog" className="card group overflow-hidden">
-              <div className="relative aspect-[4/3] overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                />
-                <span className="absolute left-4 top-4 badge badge-cyan">{product.tag}</span>
-              </div>
-              <div className="p-6">
-                <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
-                  HAMA · {product.category}
-                </p>
-                <h3 className="mt-1 mb-4 text-lg font-semibold text-[var(--heading)] group-hover:text-cyan-400">
-                  {product.name}
-                </h3>
-                <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-cyan-400">
-                    ${product.price.toFixed(0)}
-                  </p>
-                  <span className="btn-primary px-4 py-2 text-xs">Shop</span>
-                </div>
-              </div>
+        {loading ? (
+          <p className="text-[var(--muted)]">Loading products…</p>
+        ) : products.length === 0 ? (
+          <div className="card p-10 text-center">
+            <p className="text-[var(--heading)] font-semibold">No products yet</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Products appear here when the admin adds them with real photos.
+            </p>
+            <Link href="/catalog" className="btn-primary mt-6 inline-flex px-6 py-2.5 text-sm">
+              Open catalog
             </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mb-12 text-center">
-          <p className="section-label mb-2">Testimonials</p>
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--heading)]">
-            Trusted by tech pioneers
-          </h2>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-3">
-          {[
-            {
-              name: "Dr. Jonathan Doe",
-              role: "Lead AI Researcher",
-              text: "The Vision X1 replaced my desktop monitors. Fidelity and spatial anchoring are lightyears ahead.",
-              initials: "JD",
-            },
-            {
-              name: "Elena Rostova",
-              role: "Music Producer",
-              text: "AuraBuds Pro fit securely and adaptive spatial audio makes listening a new experience.",
-              initials: "ER",
-            },
-            {
-              name: "Marcus Vance",
-              role: "Extreme Athlete",
-              text: "Nexus Ring battery life is incredible — I only charge it once every two weeks.",
-              initials: "MV",
-            },
-          ].map((t) => (
-            <div key={t.name} className="card p-7">
-              <div className="mb-4 flex gap-0.5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className="h-4 w-4 fill-cyan-400 text-cyan-400" />
-                ))}
-              </div>
-              <p className="mb-6 text-sm leading-relaxed text-[var(--muted)]">
-                &ldquo;{t.text}&rdquo;
-              </p>
-              <div className="flex items-center gap-3 border-t border-[var(--border)] pt-5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400/30 to-blue-500/20 text-xs font-bold text-cyan-400">
-                  {t.initials}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-[var(--heading)]">{t.name}</p>
-                  <p className="text-xs text-[var(--muted)]">{t.role}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {products.map((product) => {
+              const img = productImage(product);
+              return (
+                <Link
+                  key={product.id}
+                  href={`/product/${product.slug}`}
+                  className="card group overflow-hidden"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface)]">
+                    <SafeImage
+                      src={img}
+                      alt={product.name}
+                      fill
+                      useFill
+                      sizes="(max-width: 640px) 100vw, 33vw"
+                      className="object-cover transition duration-300 group-hover:scale-105"
+                    />
+                  </div>
+                  <div className="p-6">
+                    <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
+                      {product.brand} · {product.category}
+                    </p>
+                    <h3 className="mt-1 mb-4 text-lg font-semibold text-[var(--heading)] group-hover:text-cyan-400">
+                      {product.name}
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xl font-bold text-cyan-400">
+                        ${Number(product.price).toLocaleString()}
+                      </p>
+                      <span className="btn-primary px-4 py-2 text-xs">View</span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );
