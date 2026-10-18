@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { products as fallbackCatalog } from "@/lib/products";
+import { assertProductMediaUrl, isVercelBlobUrl } from "@/lib/blob";
 
 function slugify(text: string) {
   return text
@@ -19,18 +20,9 @@ const productSchema = z.object({
   compareAt: z.number().positive().optional().nullable(),
   category: z.string().min(1),
   brand: z.string().optional(),
-  emoji: z.string().optional(),
-  // Accept any http(s) URL or empty — do not force strict Zod url()
-  imageUrl: z
-    .string()
-    .optional()
-    .nullable()
-    .transform((v) => {
-      if (v == null) return null;
-      const t = String(v).trim();
-      if (!t) return null;
-      return t;
-    }),
+  imageUrl: z.string().optional().nullable(),
+  videoUrl: z.string().optional().nullable(),
+  posterUrl: z.string().optional().nullable(),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -47,6 +39,8 @@ function mapDbProduct(p: {
   brand: string;
   emoji: string;
   imageUrl?: string | null;
+  videoUrl?: string | null;
+  posterUrl?: string | null;
   stock: number;
   rating: number;
   description: string;
@@ -62,9 +56,10 @@ function mapDbProduct(p: {
     category: p.category,
     brand: p.brand,
     emoji: p.emoji,
-    // Always surface custom image first — never replace with auto image
     image: imageUrl || undefined,
     imageUrl: imageUrl || undefined,
+    videoUrl: p.videoUrl?.trim() || undefined,
+    posterUrl: p.posterUrl?.trim() || undefined,
     stock: p.stock,
     rating: p.rating,
     description: p.description,
@@ -87,7 +82,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Single product by slug (DB first)
     if (slug) {
       const db = await prisma.storeProduct.findFirst({
         where: isAdmin ? { slug } : { slug, published: true },
@@ -117,7 +111,6 @@ export async function GET(req: NextRequest) {
 
     const mapped = dbProducts.map(mapDbProduct);
 
-    // Public store: ONLY real DB products when any exist
     if (!isAdmin) {
       if (mapped.length > 0) {
         return NextResponse.json({
@@ -126,7 +119,6 @@ export async function GET(req: NextRequest) {
           lowStock: mapped.filter((p) => p.stock > 0 && p.stock <= 5).length,
         });
       }
-      // Empty DB → show real HAMA catalog fallback (not sci-fi demos)
       const list = fallbackCatalog.map((p) => ({
         ...p,
         image: p.image,
@@ -136,12 +128,11 @@ export async function GET(req: NextRequest) {
       }));
       return NextResponse.json({
         products: list,
-        outOfStock: list.filter((p) => p.stock <= 0).length,
-        lowStock: list.filter((p) => p.stock > 0 && p.stock <= 5).length,
+        outOfStock: 0,
+        lowStock: 0,
       });
     }
 
-    // Admin: DB + note if empty
     return NextResponse.json({
       products: mapped,
       outOfStock: mapped.filter((p) => p.stock <= 0).length,
@@ -169,10 +160,35 @@ export async function POST(req: NextRequest) {
       slug = `${slug}-${Date.now().toString(36)}`;
     }
 
-    let imageUrl = data.imageUrl;
-    if (imageUrl && !/^https?:\/\//i.test(imageUrl) && !imageUrl.startsWith("/")) {
+    let imageUrl: string | null;
+    let videoUrl: string | null;
+    let posterUrl: string | null;
+    try {
+      imageUrl = assertProductMediaUrl(data.imageUrl, {
+        field: "imageUrl",
+        strictBlob: true,
+      });
+      videoUrl = assertProductMediaUrl(data.videoUrl, {
+        field: "videoUrl",
+        strictBlob: true,
+      });
+      posterUrl = assertProductMediaUrl(data.posterUrl, {
+        field: "posterUrl",
+        strictBlob: true,
+      });
+    } catch (e) {
       return NextResponse.json(
-        { error: "Image URL must start with http:// or https://" },
+        { error: e instanceof Error ? e.message : "Invalid media URL" },
+        { status: 400 }
+      );
+    }
+
+    if (!imageUrl || !isVercelBlobUrl(imageUrl)) {
+      return NextResponse.json(
+        {
+          error:
+            "imageUrl must be the exact https URL returned by Vercel Blob upload (not a filename, blob: preview, or base64).",
+        },
         { status: 400 }
       );
     }
@@ -186,8 +202,10 @@ export async function POST(req: NextRequest) {
         compareAt: data.compareAt ?? null,
         category: data.category.trim(),
         brand: data.brand?.trim() || "HAMA",
-        emoji: data.emoji?.trim() || "📦",
-        imageUrl: imageUrl,
+        emoji: "📦",
+        imageUrl,
+        videoUrl,
+        posterUrl,
         stock: data.stock ?? 0,
         rating: data.rating ?? 5,
         published: data.published ?? true,

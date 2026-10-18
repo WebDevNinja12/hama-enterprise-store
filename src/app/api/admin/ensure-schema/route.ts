@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-/** Admin-only: ensure columns + search indexes exist */
 export async function POST() {
   try {
     const session = await auth();
@@ -11,13 +10,15 @@ export async function POST() {
     }
 
     await prisma.$executeRawUnsafe(`
-      ALTER TABLE "StoreProduct"
-      ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;
+      ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "videoUrl" TEXT;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "posterUrl" TEXT;
     `);
 
-    // Email already unique-indexed by Prisma @@unique
-
-    // Full-text expression index for product search
     await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "StoreProduct_fts_idx"
       ON "StoreProduct"
@@ -30,18 +31,13 @@ export async function POST() {
     `);
 
     await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "StoreProduct_name_trgm_idx"
-      ON "StoreProduct" (name);
-    `);
-
-    await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "StoreProduct_published_idx"
       ON "StoreProduct" (published);
     `);
 
     return NextResponse.json({
       ok: true,
-      message: "Schema + search indexes ready",
+      message: "Schema ready (imageUrl, videoUrl, posterUrl + indexes)",
     });
   } catch (err) {
     console.error("ensure-schema error:", err);

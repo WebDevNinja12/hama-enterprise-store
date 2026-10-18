@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { products as seedProducts } from "@/lib/products";
+import { assertProductMediaUrl, deleteBlobIfOurs } from "@/lib/blob";
 
 const updateSchema = z.object({
   name: z.string().min(2).optional(),
@@ -11,8 +11,9 @@ const updateSchema = z.object({
   compareAt: z.number().positive().nullable().optional(),
   category: z.string().min(1).optional(),
   brand: z.string().optional(),
-  emoji: z.string().optional(),
   imageUrl: z.string().optional().nullable(),
+  videoUrl: z.string().optional().nullable(),
+  posterUrl: z.string().optional().nullable(),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -32,78 +33,63 @@ export async function PATCH(
     const body = await req.json();
     const data = updateSchema.parse(body);
 
-    let imageUrl: string | null | undefined = undefined;
-    if (data.imageUrl !== undefined) {
-      const t = data.imageUrl == null ? "" : String(data.imageUrl).trim();
-      if (!t) imageUrl = null;
-      else if (!/^https?:\/\//i.test(t) && !t.startsWith("/")) {
-        return NextResponse.json(
-          { error: "Image URL must start with http:// or https://" },
-          { status: 400 }
-        );
-      } else {
-        imageUrl = t;
-      }
+    const existing = await prisma.storeProduct.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    if (id.startsWith("seed-")) {
-      const seedId = id.replace("seed-", "");
-      const seed = seedProducts.find((p) => p.id === seedId);
-      if (!seed) {
-        return NextResponse.json({ error: "Product not found" }, { status: 404 });
-      }
-      const existing = await prisma.storeProduct.findUnique({ where: { slug: seed.slug } });
-      if (existing) {
-        const product = await prisma.storeProduct.update({
-          where: { id: existing.id },
-          data: {
-            ...(data.name ? { name: data.name.trim() } : {}),
-            ...(data.description ? { description: data.description.trim() } : {}),
-            ...(data.category ? { category: data.category.trim() } : {}),
-            ...(data.brand !== undefined ? { brand: data.brand } : {}),
-            ...(data.price !== undefined ? { price: data.price } : {}),
-            ...(data.compareAt !== undefined ? { compareAt: data.compareAt } : {}),
-            ...(data.stock !== undefined ? { stock: data.stock } : {}),
-            ...(data.rating !== undefined ? { rating: data.rating } : {}),
-            ...(data.published !== undefined ? { published: data.published } : {}),
-            ...(imageUrl !== undefined ? { imageUrl } : {}),
-          },
+    const patch: Record<string, unknown> = {};
+    if (data.name) patch.name = data.name.trim();
+    if (data.description) patch.description = data.description.trim();
+    if (data.category) patch.category = data.category.trim();
+    if (data.brand !== undefined) patch.brand = data.brand;
+    if (data.price !== undefined) patch.price = data.price;
+    if (data.compareAt !== undefined) patch.compareAt = data.compareAt;
+    if (data.stock !== undefined) patch.stock = data.stock;
+    if (data.rating !== undefined) patch.rating = data.rating;
+    if (data.published !== undefined) patch.published = data.published;
+
+    try {
+      if (data.imageUrl !== undefined) {
+        const next = assertProductMediaUrl(data.imageUrl, {
+          field: "imageUrl",
+          strictBlob: true,
         });
-        return NextResponse.json({ ok: true, product });
+        if (next !== existing.imageUrl) {
+          await deleteBlobIfOurs(existing.imageUrl);
+        }
+        patch.imageUrl = next;
       }
-      const product = await prisma.storeProduct.create({
-        data: {
-          name: data.name?.trim() || seed.name,
-          slug: seed.slug,
-          description: data.description?.trim() || seed.description,
-          price: data.price ?? seed.price,
-          compareAt: data.compareAt ?? seed.compareAt ?? null,
-          category: data.category?.trim() || seed.category,
-          brand: data.brand || seed.brand,
-          emoji: data.emoji || "📦",
-          imageUrl: imageUrl ?? seed.image ?? null,
-          stock: data.stock ?? seed.stock,
-          rating: data.rating ?? seed.rating,
-          published: data.published ?? true,
-        },
-      });
-      return NextResponse.json({ ok: true, product });
+      if (data.videoUrl !== undefined) {
+        const next = assertProductMediaUrl(data.videoUrl, {
+          field: "videoUrl",
+          strictBlob: true,
+        });
+        if (next !== existing.videoUrl) {
+          await deleteBlobIfOurs(existing.videoUrl);
+        }
+        patch.videoUrl = next;
+      }
+      if (data.posterUrl !== undefined) {
+        const next = assertProductMediaUrl(data.posterUrl, {
+          field: "posterUrl",
+          strictBlob: true,
+        });
+        if (next !== existing.posterUrl) {
+          await deleteBlobIfOurs(existing.posterUrl);
+        }
+        patch.posterUrl = next;
+      }
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Invalid media URL" },
+        { status: 400 }
+      );
     }
 
     const product = await prisma.storeProduct.update({
       where: { id },
-      data: {
-        ...(data.name ? { name: data.name.trim() } : {}),
-        ...(data.description ? { description: data.description.trim() } : {}),
-        ...(data.category ? { category: data.category.trim() } : {}),
-        ...(data.brand !== undefined ? { brand: data.brand } : {}),
-        ...(data.price !== undefined ? { price: data.price } : {}),
-        ...(data.compareAt !== undefined ? { compareAt: data.compareAt } : {}),
-        ...(data.stock !== undefined ? { stock: data.stock } : {}),
-        ...(data.rating !== undefined ? { rating: data.rating } : {}),
-        ...(data.published !== undefined ? { published: data.published } : {}),
-        ...(imageUrl !== undefined ? { imageUrl } : {}),
-      },
+      data: patch,
     });
 
     return NextResponse.json({ ok: true, product });
@@ -124,13 +110,14 @@ export async function DELETE(
     }
 
     const { id } = await context.params;
-
-    if (id.startsWith("seed-") || id.startsWith("real-")) {
-      return NextResponse.json({
-        ok: true,
-        message: "Fallback catalog item hidden from admin list when DB has products",
-      });
+    const existing = await prisma.storeProduct.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
+
+    await deleteBlobIfOurs(existing.imageUrl);
+    await deleteBlobIfOurs(existing.videoUrl);
+    await deleteBlobIfOurs(existing.posterUrl);
 
     await prisma.storeProduct.delete({ where: { id } });
     return NextResponse.json({ ok: true });
