@@ -1,5 +1,14 @@
 import { del } from "@vercel/blob";
 
+/** Prefer standard name; also accept store-prefixed token from Vercel UI */
+export function getBlobToken(): string | undefined {
+  return (
+    process.env.BLOB_READ_WRITE_TOKEN ||
+    process.env.BLOB_HOUSE_READ_WRITE_TOKEN ||
+    undefined
+  );
+}
+
 export function isVercelBlobUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== "string") return false;
   try {
@@ -25,10 +34,6 @@ export function isInvalidMediaUrl(url: string | null | undefined): boolean {
   return false;
 }
 
-/**
- * Product images: any public https URL (Blob, CDN, Unsplash, etc.).
- * Rejects blob:/data:/relative paths.
- */
 export function assertHttpsImageUrl(
   url: string | null | undefined,
   field = "imageUrl"
@@ -46,7 +51,6 @@ export function assertHttpsImageUrl(
   return t;
 }
 
-/** Fetch URL to confirm it looks like a real image (HEAD, then short GET). */
 export async function verifyRemoteImage(url: string): Promise<{
   ok: boolean;
   contentType?: string;
@@ -62,7 +66,6 @@ export async function verifyRemoteImage(url: string): Promise<{
     if (head.ok && type.startsWith("image/")) {
       return { ok: true, contentType: type };
     }
-    // Some CDNs block HEAD — try range GET
     const get = await fetch(url, {
       method: "GET",
       headers: { Range: "bytes=0-1023" },
@@ -73,8 +76,7 @@ export async function verifyRemoteImage(url: string): Promise<{
     if ((get.ok || get.status === 206) && type.startsWith("image/")) {
       return { ok: true, contentType: type };
     }
-    if (get.ok && !type) {
-      // URL reachable; allow (some hosts omit content-type)
+    if (get.ok) {
       return { ok: true, contentType: type || undefined };
     }
     return {
@@ -94,9 +96,10 @@ export async function verifyRemoteImage(url: string): Promise<{
 
 export async function deleteBlobIfOurs(url: string | null | undefined) {
   if (!url || !isVercelBlobUrl(url)) return;
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return;
+  const token = getBlobToken();
+  if (!token) return;
   try {
-    await del(url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+    await del(url, { token });
   } catch (e) {
     console.warn("Blob delete failed:", url, e);
   }
