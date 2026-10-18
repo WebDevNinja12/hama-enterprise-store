@@ -12,7 +12,7 @@ const updateSchema = z.object({
   category: z.string().min(1).optional(),
   brand: z.string().optional(),
   emoji: z.string().optional(),
-  imageUrl: z.string().url().optional().nullable().or(z.literal("")),
+  imageUrl: z.string().optional().nullable(),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -32,12 +32,19 @@ export async function PATCH(
     const body = await req.json();
     const data = updateSchema.parse(body);
 
-    const imageUrl =
-      data.imageUrl === undefined
-        ? undefined
-        : data.imageUrl && String(data.imageUrl).trim()
-          ? String(data.imageUrl).trim()
-          : null;
+    let imageUrl: string | null | undefined = undefined;
+    if (data.imageUrl !== undefined) {
+      const t = data.imageUrl == null ? "" : String(data.imageUrl).trim();
+      if (!t) imageUrl = null;
+      else if (!/^https?:\/\//i.test(t) && !t.startsWith("/")) {
+        return NextResponse.json(
+          { error: "Image URL must start with http:// or https://" },
+          { status: 400 }
+        );
+      } else {
+        imageUrl = t;
+      }
+    }
 
     if (id.startsWith("seed-")) {
       const seedId = id.replace("seed-", "");
@@ -50,11 +57,16 @@ export async function PATCH(
         const product = await prisma.storeProduct.update({
           where: { id: existing.id },
           data: {
-            ...data,
-            ...(imageUrl !== undefined ? { imageUrl } : {}),
             ...(data.name ? { name: data.name.trim() } : {}),
             ...(data.description ? { description: data.description.trim() } : {}),
             ...(data.category ? { category: data.category.trim() } : {}),
+            ...(data.brand !== undefined ? { brand: data.brand } : {}),
+            ...(data.price !== undefined ? { price: data.price } : {}),
+            ...(data.compareAt !== undefined ? { compareAt: data.compareAt } : {}),
+            ...(data.stock !== undefined ? { stock: data.stock } : {}),
+            ...(data.rating !== undefined ? { rating: data.rating } : {}),
+            ...(data.published !== undefined ? { published: data.published } : {}),
+            ...(imageUrl !== undefined ? { imageUrl } : {}),
           },
         });
         return NextResponse.json({ ok: true, product });
@@ -81,11 +93,16 @@ export async function PATCH(
     const product = await prisma.storeProduct.update({
       where: { id },
       data: {
-        ...data,
-        ...(imageUrl !== undefined ? { imageUrl } : {}),
         ...(data.name ? { name: data.name.trim() } : {}),
         ...(data.description ? { description: data.description.trim() } : {}),
         ...(data.category ? { category: data.category.trim() } : {}),
+        ...(data.brand !== undefined ? { brand: data.brand } : {}),
+        ...(data.price !== undefined ? { price: data.price } : {}),
+        ...(data.compareAt !== undefined ? { compareAt: data.compareAt } : {}),
+        ...(data.stock !== undefined ? { stock: data.stock } : {}),
+        ...(data.rating !== undefined ? { rating: data.rating } : {}),
+        ...(data.published !== undefined ? { published: data.published } : {}),
+        ...(imageUrl !== undefined ? { imageUrl } : {}),
       },
     });
 
@@ -108,36 +125,11 @@ export async function DELETE(
 
     const { id } = await context.params;
 
-    if (id.startsWith("seed-")) {
-      const seedId = id.replace("seed-", "");
-      const seed = seedProducts.find((p) => p.id === seedId);
-      if (!seed) {
-        return NextResponse.json({ error: "Product not found" }, { status: 404 });
-      }
-      const existing = await prisma.storeProduct.findUnique({ where: { slug: seed.slug } });
-      if (existing) {
-        await prisma.storeProduct.update({
-          where: { id: existing.id },
-          data: { published: false },
-        });
-      } else {
-        await prisma.storeProduct.create({
-          data: {
-            name: seed.name,
-            slug: seed.slug,
-            description: seed.description,
-            price: seed.price,
-            compareAt: seed.compareAt ?? null,
-            category: seed.category,
-            brand: seed.brand,
-            emoji: "📦",
-            stock: 0,
-            rating: seed.rating,
-            published: false,
-          },
-        });
-      }
-      return NextResponse.json({ ok: true, removed: "seed" });
+    if (id.startsWith("seed-") || id.startsWith("real-")) {
+      return NextResponse.json({
+        ok: true,
+        message: "Fallback catalog item hidden from admin list when DB has products",
+      });
     }
 
     await prisma.storeProduct.delete({ where: { id } });
