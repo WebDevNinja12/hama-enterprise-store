@@ -48,12 +48,11 @@ const providers: Provider[] = [
       const password = String(credentials.password);
       const limitKey = email;
 
-      const allowed = checkLoginAllowed(limitKey);
+      const allowed = await checkLoginAllowed(limitKey);
       if (!allowed.ok) {
         throw new Error("LOGIN_LOCKED");
       }
 
-      // Minimal select — indexed email unique lookup
       const user = await prisma.user.findUnique({
         where: { email },
         select: {
@@ -67,25 +66,23 @@ const providers: Provider[] = [
       });
 
       if (!user || !user.password) {
-        recordLoginFailure(limitKey);
+        await recordLoginFailure(limitKey);
         return null;
       }
 
       if (!user.emailVerified && user.role !== "ADMIN") {
-        recordLoginFailure(limitKey);
+        await recordLoginFailure(limitKey);
         throw new Error("EMAIL_NOT_VERIFIED");
       }
 
-      // bcryptjs cost 10 (default) — balance speed vs security (~50–150ms)
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) {
-        recordLoginFailure(limitKey);
+        await recordLoginFailure(limitKey);
         return null;
       }
 
-      clearLoginFailures(limitKey);
+      await clearLoginFailures(limitKey);
 
-      // Single fast non-blocking activity write
       prisma.user
         .update({
           where: { id: user.id },

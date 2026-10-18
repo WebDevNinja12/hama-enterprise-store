@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { Star, ShoppingCart } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { products as seedProducts, productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
+import SafeImage from "@/components/SafeImage";
 
-export default function CatalogPage() {
+function CatalogInner() {
   const { addItem, getQtyInCart } = useCart();
   const searchParams = useSearchParams();
   const qParam = (searchParams.get("q") || "").trim().toLowerCase();
@@ -135,12 +136,13 @@ export default function CatalogPage() {
             <div key={p.id} className="card group overflow-hidden">
               <Link href={`/product/${p.slug}`}>
                 <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface)]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <SafeImage
                     src={img}
                     alt={p.name}
-                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                    loading="lazy"
+                    fill
+                    useFill
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="object-cover transition duration-300 group-hover:scale-105"
                   />
                   <span className="absolute left-3 top-3 badge badge-cyan text-[10px]">
                     {p.category.toUpperCase()}
@@ -196,5 +198,13 @@ export default function CatalogPage() {
         })}
       </div>
     </div>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center text-[var(--muted)]">Loading catalog…</div>}>
+      <CatalogInner />
+    </Suspense>
   );
 }

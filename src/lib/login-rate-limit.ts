@@ -1,39 +1,37 @@
-/** Failed-login rate limit (in-memory per isolate) */
+import { cacheGet, cacheSet, rateLimitIncr } from "./redis";
 
-const fails = new Map<string, { n: number; t: number; lockUntil: number }>();
-
-const WINDOW_MS = 15 * 60 * 1000;
+const WINDOW_SEC = 15 * 60;
 const MAX_FAILS = 8;
-const LOCK_MS = 5 * 60 * 1000;
+const LOCK_SEC = 5 * 60;
 
-export function checkLoginAllowed(key: string): { ok: boolean; retryAfterSec?: number } {
-  const now = Date.now();
-  const row = fails.get(key);
-  if (!row) return { ok: true };
-  if (row.lockUntil > now) {
-    return { ok: false, retryAfterSec: Math.ceil((row.lockUntil - now) / 1000) };
-  }
-  if (now - row.t > WINDOW_MS) {
-    fails.delete(key);
-    return { ok: true };
+export async function checkLoginAllowed(
+  key: string
+): Promise<{ ok: boolean; retryAfterSec?: number }> {
+  const lock = await cacheGet(`login:lock:${key}`);
+  if (lock) {
+    const until = parseInt(lock, 10);
+    const left = Math.ceil((until - Date.now()) / 1000);
+    if (left > 0) return { ok: false, retryAfterSec: left };
   }
   return { ok: true };
 }
 
-export function recordLoginFailure(key: string) {
-  const now = Date.now();
-  const row = fails.get(key);
-  if (!row || now - row.t > WINDOW_MS) {
-    fails.set(key, { n: 1, t: now, lockUntil: 0 });
-    return;
-  }
-  row.n += 1;
-  row.t = now;
-  if (row.n >= MAX_FAILS) {
-    row.lockUntil = now + LOCK_MS;
+export async function recordLoginFailure(key: string) {
+  const { remaining, ok } = await rateLimitIncr(
+    `login:fail:${key}`,
+    MAX_FAILS,
+    WINDOW_SEC
+  );
+  if (!ok || remaining <= 0) {
+    await cacheSet(
+      `login:lock:${key}`,
+      String(Date.now() + LOCK_SEC * 1000),
+      LOCK_SEC
+    );
   }
 }
 
-export function clearLoginFailures(key: string) {
-  fails.delete(key);
+export async function clearLoginFailures(key: string) {
+  await cacheSet(`login:fail:${key}`, "0", 1);
+  await cacheSet(`login:lock:${key}`, "0", 1);
 }
