@@ -6,6 +6,13 @@ import type { Provider } from "next-auth/providers";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import type { Role } from "@prisma/client";
+import {
+  SESSION,
+  customerCookieName,
+  adminCookieName,
+  COOKIE_BASE,
+  isProduction,
+} from "./session-config";
 
 declare module "next-auth" {
   interface Session {
@@ -15,44 +22,11 @@ declare module "next-auth" {
       name?: string | null;
       email?: string | null;
       image?: string | null;
-      hasCustomImage?: boolean;
     };
   }
   interface User {
     role: Role;
   }
-}
-
-const ADMIN_LOGO =
-  "https://raw.githubusercontent.com/WebDevNinja12/hama-enterprise-store/main/logo.png";
-
-/**
- * Never put large data: URLs into the JWT cookie — that causes
- * 494 REQUEST_HEADER_TOO_LARGE on Vercel/Cloudflare.
- * Only allow short http(s) URLs or known relative paths.
- */
-function safeSessionImage(
-  image: string | null | undefined,
-  role?: Role | string
-): string | null {
-  if (!image) {
-    return role === "ADMIN" ? ADMIN_LOGO : null;
-  }
-  if (image.startsWith("data:")) {
-    // Stored in DB only — load via /api/account, not cookie
-    return role === "ADMIN" ? ADMIN_LOGO : null;
-  }
-  if (image.length > 500) {
-    return role === "ADMIN" ? ADMIN_LOGO : null;
-  }
-  if (
-    image.startsWith("http://") ||
-    image.startsWith("https://") ||
-    image.startsWith("/")
-  ) {
-    return image;
-  }
-  return role === "ADMIN" ? ADMIN_LOGO : null;
 }
 
 const providers: Provider[] = [
@@ -68,7 +42,17 @@ const providers: Provider[] = [
       const email = String(credentials.email).toLowerCase().trim();
       const password = String(credentials.password);
 
-      const user = await prisma.user.findUnique({ where: { email } });
+      const user = await prisma.user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          password: true,
+          role: true,
+          emailVerified: true,
+        },
+      });
       if (!user || !user.password) return null;
 
       if (!user.emailVerified && user.role !== "ADMIN") {
@@ -78,16 +62,19 @@ const providers: Provider[] = [
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) return null;
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { lastActiveAt: new Date() },
-      });
+      // Fire-and-forget activity touch — never block login
+      prisma.user
+        .update({
+          where: { id: user.id },
+          data: { lastActiveAt: new Date() },
+        })
+        .catch(() => {});
 
+      // Minimal user object — NO image blobs in token
       return {
         id: user.id,
         email: user.email,
         name: user.name,
-        image: safeSessionImage(user.image, user.role),
         role: user.role,
       };
     },
@@ -103,84 +90,124 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   );
 }
 
+/**
+ * Cookie name depends on role after sign-in.
+ * NextAuth uses one sessionToken name per config; we use customer as default
+ * and middleware copies/clears admin cookie separately for /admin routes.
+ */
+const sessionCookieName = customerCookieName();
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
-  pages: { signIn: "/login" },
+  session: {
+    strategy: "jwt",
+    maxAge: SESSION.JWT_MAX_AGE_SEC,
+    updateAge: 60, // refresh at most once per minute
+  },
+  jwt: {
+    maxAge: SESSION.JWT_MAX_AGE_SEC,
+  },
+  pages: {
+    signIn: "/login",
+    error: "/error",
+  },
   providers,
+  cookies: {
+    sessionToken: {
+      name: sessionCookieName,
+      options: {
+        ...COOKIE_BASE,
+        maxAge: SESSION.JWT_MAX_AGE_SEC,
+      },
+    },
+    callbackUrl: {
+      name: isProduction()
+        ? "__Secure-hama.callback"
+        : "hama.callback",
+      options: {
+        ...COOKIE_BASE,
+        httpOnly: true,
+        maxAge: 60 * 15,
+      },
+    },
+    csrfToken: {
+      name: isProduction() ? "__Host-hama.csrf" : "hama.csrf",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction(),
+        maxAge: SESSION.JWT_MAX_AGE_SEC,
+      },
+    },
+  },
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, trigger }) {
+      const now = Math.floor(Date.now() / 1000);
+
       if (user) {
-        token.id = user.id;
+        // Tiny JWT payload only
+        token.sub = user.id;
         token.role = (user as { role?: Role }).role ?? "USER";
-        token.name = user.name;
-        token.picture = safeSessionImage(
-          user.image,
-          (user as { role?: Role }).role
-        );
-        token.hasCustomImage = Boolean(
-          user.image && String(user.image).startsWith("data:")
-        );
+        token.name = user.name ?? undefined;
+        token.email = user.email ?? undefined;
+        token.la = now; // last activity (unix seconds)
+        // Explicitly strip heavy fields
+        delete token.picture;
+        delete token.image;
+        return token;
       }
 
-      if (trigger === "update" && session) {
-        if (session.name !== undefined) token.name = session.name;
-        // Never accept a data URL into the token from client update
-        if (session.image !== undefined) {
-          token.picture = safeSessionImage(
-            session.image,
-            token.role as Role
-          );
-        }
-        if (session.hasCustomImage !== undefined) {
-          token.hasCustomImage = session.hasCustomImage;
-        }
+      // Inactivity: expire token if idle too long
+      const role = (token.role as Role) || "USER";
+      const lastActive = typeof token.la === "number" ? token.la : now;
+      const idleLimitSec =
+        role === "ADMIN"
+          ? SESSION.ADMIN_IDLE_MS / 1000
+          : SESSION.CUSTOMER_IDLE_MS / 1000;
+
+      if (now - lastActive > idleLimitSec) {
+        // Force empty token → unauthenticated
+        return { exp: 0 } as typeof token;
       }
 
-      // Keep JWT small: only id, role, name, short image URL — no data URLs
-      if (token.id && (user || trigger === "update")) {
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: { role: true, image: true, name: true },
-          });
-          if (dbUser) {
-            token.role = dbUser.role;
-            token.name = dbUser.name;
-            token.picture = safeSessionImage(dbUser.image, dbUser.role);
-            token.hasCustomImage = Boolean(
-              dbUser.image && dbUser.image.startsWith("data:")
-            );
-          }
-        } catch {
-          /* ignore */
-        }
+      // Touch activity on session update / periodic refresh
+      if (trigger === "update" || now - lastActive > 30) {
+        token.la = now;
       }
 
-      // Drop any accidental oversized picture field
-      if (
-        typeof token.picture === "string" &&
-        (token.picture.startsWith("data:") || token.picture.length > 500)
-      ) {
-        token.picture =
-          token.role === "ADMIN" ? ADMIN_LOGO : null;
-      }
+      // Never keep image/picture in JWT
+      delete token.picture;
+      delete token.image;
 
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = (token.id as string) || "";
-        session.user.role = (token.role as Role) || "USER";
-        session.user.name = (token.name as string) || session.user.name;
-        session.user.image = safeSessionImage(
-          token.picture as string | null,
-          token.role as Role
-        );
-        session.user.hasCustomImage = Boolean(token.hasCustomImage);
+      if (!token?.sub || token.exp === 0) {
+        // Empty session
+        session.user = {
+          id: "",
+          role: "USER",
+          name: null,
+          email: null,
+          image: null,
+        };
+        return session;
       }
+
+      session.user = {
+        id: String(token.sub),
+        role: (token.role as Role) || "USER",
+        name: (token.name as string) || null,
+        email: (token.email as string) || null,
+        // Images never from cookie — client fetches /api/account
+        image: token.role === "ADMIN" ? "/logo.png" : null,
+      };
       return session;
     },
   },
   trustHost: true,
 });
+
+/** Exported for middleware admin cookie mirroring */
+export { adminCookieName, customerCookieName };
