@@ -1,6 +1,5 @@
 import { del } from "@vercel/blob";
 
-/** Vercel Blob public URL host pattern */
 export function isVercelBlobUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== "string") return false;
   try {
@@ -15,7 +14,6 @@ export function isVercelBlobUrl(url: string | null | undefined): boolean {
   }
 }
 
-/** Reject blob: previews, data URLs, local paths, bare filenames */
 export function isInvalidMediaUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   const t = url.trim();
@@ -28,32 +26,70 @@ export function isInvalidMediaUrl(url: string | null | undefined): boolean {
 }
 
 /**
- * Saved product media must be https Blob URLs (or legacy https during transition).
- * Strict mode: only Blob host.
+ * Product images: any public https URL (Blob, CDN, Unsplash, etc.).
+ * Rejects blob:/data:/relative paths.
  */
-export function assertProductMediaUrl(
+export function assertHttpsImageUrl(
   url: string | null | undefined,
-  opts?: { strictBlob?: boolean; field?: string }
+  field = "imageUrl"
 ): string | null {
   if (url == null || String(url).trim() === "") return null;
   const t = String(url).trim();
   if (isInvalidMediaUrl(t)) {
     throw new Error(
-      `${opts?.field || "Media"} must be an https URL from Vercel Blob — not a filename, /uploads path, blob: preview, or base64.`
+      `${field} must be a public https image URL — not a filename, /uploads path, blob: preview, or base64.`
     );
   }
   if (!t.startsWith("https://")) {
-    throw new Error(`${opts?.field || "Media"} must use https://`);
-  }
-  if (opts?.strictBlob !== false && !isVercelBlobUrl(t)) {
-    // Allow unsplash / external https only when not strict
-    if (opts?.strictBlob === true) {
-      throw new Error(
-        `${opts?.field || "Media"} must be a Vercel Blob URL (*.public.blob.vercel-storage.com)`
-      );
-    }
+    throw new Error(`${field} must use https://`);
   }
   return t;
+}
+
+/** Fetch URL to confirm it looks like a real image (HEAD, then short GET). */
+export async function verifyRemoteImage(url: string): Promise<{
+  ok: boolean;
+  contentType?: string;
+  error?: string;
+}> {
+  try {
+    const head = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+    });
+    let type = head.headers.get("content-type") || "";
+    if (head.ok && type.startsWith("image/")) {
+      return { ok: true, contentType: type };
+    }
+    // Some CDNs block HEAD — try range GET
+    const get = await fetch(url, {
+      method: "GET",
+      headers: { Range: "bytes=0-1023" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(10000),
+    });
+    type = get.headers.get("content-type") || type;
+    if ((get.ok || get.status === 206) && type.startsWith("image/")) {
+      return { ok: true, contentType: type };
+    }
+    if (get.ok && !type) {
+      // URL reachable; allow (some hosts omit content-type)
+      return { ok: true, contentType: type || undefined };
+    }
+    return {
+      ok: false,
+      error: `Could not verify image at URL (HTTP ${get.status}). Use a direct https image link.`,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error:
+        e instanceof Error
+          ? `Could not fetch image: ${e.message}`
+          : "Could not fetch image URL",
+    };
+  }
 }
 
 export async function deleteBlobIfOurs(url: string | null | undefined) {

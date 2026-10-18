@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { assertProductMediaUrl, isVercelBlobUrl } from "@/lib/blob";
+import { assertHttpsImageUrl, verifyRemoteImage } from "@/lib/blob";
 
 function slugify(text: string) {
   return text
@@ -20,8 +20,6 @@ const productSchema = z.object({
   category: z.string().min(1),
   brand: z.string().optional(),
   imageUrl: z.string().optional().nullable(),
-  videoUrl: z.string().optional().nullable(),
-  posterUrl: z.string().optional().nullable(),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -38,8 +36,6 @@ function mapDbProduct(p: {
   brand: string;
   emoji: string;
   imageUrl?: string | null;
-  videoUrl?: string | null;
-  posterUrl?: string | null;
   stock: number;
   rating: number;
   description: string;
@@ -57,8 +53,6 @@ function mapDbProduct(p: {
     emoji: p.emoji,
     image: imageUrl || undefined,
     imageUrl: imageUrl || undefined,
-    videoUrl: p.videoUrl?.trim() || undefined,
-    posterUrl: p.posterUrl?.trim() || undefined,
     stock: p.stock,
     rating: p.rating,
     description: p.description,
@@ -85,9 +79,7 @@ export async function GET(req: NextRequest) {
       const db = await prisma.storeProduct.findFirst({
         where: isAdmin ? { slug } : { slug, published: true },
       });
-      if (db) {
-        return NextResponse.json({ product: mapDbProduct(db) });
-      }
+      if (db) return NextResponse.json({ product: mapDbProduct(db) });
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -97,7 +89,6 @@ export async function GET(req: NextRequest) {
     });
 
     const mapped = dbProducts.map(mapDbProduct);
-
     return NextResponse.json({
       products: mapped,
       outOfStock: mapped.filter((p) => p.stock <= 0).length,
@@ -121,38 +112,33 @@ export async function POST(req: NextRequest) {
     let slug = data.slug?.trim() || slugify(data.name);
 
     const exists = await prisma.storeProduct.findUnique({ where: { slug } });
-    if (exists) {
-      slug = `${slug}-${Date.now().toString(36)}`;
-    }
+    if (exists) slug = `${slug}-${Date.now().toString(36)}`;
 
     let imageUrl: string | null;
-    let videoUrl: string | null;
-    let posterUrl: string | null;
     try {
-      imageUrl = assertProductMediaUrl(data.imageUrl, {
-        field: "imageUrl",
-        strictBlob: true,
-      });
-      videoUrl = assertProductMediaUrl(data.videoUrl, {
-        field: "videoUrl",
-        strictBlob: true,
-      });
-      posterUrl = assertProductMediaUrl(data.posterUrl, {
-        field: "posterUrl",
-        strictBlob: true,
-      });
+      imageUrl = assertHttpsImageUrl(data.imageUrl, "imageUrl");
     } catch (e) {
       return NextResponse.json(
-        { error: e instanceof Error ? e.message : "Invalid media URL" },
+        { error: e instanceof Error ? e.message : "Invalid image URL" },
         { status: 400 }
       );
     }
 
-    if (!imageUrl || !isVercelBlobUrl(imageUrl)) {
+    if (!imageUrl) {
+      return NextResponse.json(
+        { error: "Product image is required (paste an https image URL or upload to Blob)." },
+        { status: 400 }
+      );
+    }
+
+    // Fetch/verify the remote image is reachable
+    const check = await verifyRemoteImage(imageUrl);
+    if (!check.ok) {
       return NextResponse.json(
         {
           error:
-            "imageUrl must be the exact https URL returned by Vercel Blob upload.",
+            check.error ||
+            "Could not load that image URL. Use a direct https link to a JPEG/PNG/WebP file.",
         },
         { status: 400 }
       );
@@ -169,18 +155,13 @@ export async function POST(req: NextRequest) {
         brand: data.brand?.trim() || "HAMA",
         emoji: "📦",
         imageUrl,
-        videoUrl,
-        posterUrl,
         stock: data.stock ?? 0,
         rating: data.rating ?? 5,
         published: data.published ?? true,
       },
     });
 
-    return NextResponse.json({
-      ok: true,
-      product: mapDbProduct(product),
-    });
+    return NextResponse.json({ ok: true, product: mapDbProduct(product) });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { assertProductMediaUrl, deleteBlobIfOurs } from "@/lib/blob";
+import {
+  assertHttpsImageUrl,
+  deleteBlobIfOurs,
+  verifyRemoteImage,
+} from "@/lib/blob";
 
 const updateSchema = z.object({
   name: z.string().min(2).optional(),
@@ -12,8 +16,6 @@ const updateSchema = z.object({
   category: z.string().min(1).optional(),
   brand: z.string().optional(),
   imageUrl: z.string().optional().nullable(),
-  videoUrl: z.string().optional().nullable(),
-  posterUrl: z.string().optional().nullable(),
   stock: z.number().int().min(0).optional(),
   rating: z.number().min(0).max(5).optional(),
   published: z.boolean().optional(),
@@ -49,42 +51,28 @@ export async function PATCH(
     if (data.rating !== undefined) patch.rating = data.rating;
     if (data.published !== undefined) patch.published = data.published;
 
-    try {
-      if (data.imageUrl !== undefined) {
-        const next = assertProductMediaUrl(data.imageUrl, {
-          field: "imageUrl",
-          strictBlob: true,
-        });
+    if (data.imageUrl !== undefined) {
+      try {
+        const next = assertHttpsImageUrl(data.imageUrl, "imageUrl");
+        if (next) {
+          const check = await verifyRemoteImage(next);
+          if (!check.ok) {
+            return NextResponse.json(
+              { error: check.error || "Image URL could not be verified" },
+              { status: 400 }
+            );
+          }
+        }
         if (next !== existing.imageUrl) {
           await deleteBlobIfOurs(existing.imageUrl);
         }
         patch.imageUrl = next;
+      } catch (e) {
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : "Invalid image URL" },
+          { status: 400 }
+        );
       }
-      if (data.videoUrl !== undefined) {
-        const next = assertProductMediaUrl(data.videoUrl, {
-          field: "videoUrl",
-          strictBlob: true,
-        });
-        if (next !== existing.videoUrl) {
-          await deleteBlobIfOurs(existing.videoUrl);
-        }
-        patch.videoUrl = next;
-      }
-      if (data.posterUrl !== undefined) {
-        const next = assertProductMediaUrl(data.posterUrl, {
-          field: "posterUrl",
-          strictBlob: true,
-        });
-        if (next !== existing.posterUrl) {
-          await deleteBlobIfOurs(existing.posterUrl);
-        }
-        patch.posterUrl = next;
-      }
-    } catch (e) {
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : "Invalid media URL" },
-        { status: 400 }
-      );
     }
 
     const product = await prisma.storeProduct.update({
