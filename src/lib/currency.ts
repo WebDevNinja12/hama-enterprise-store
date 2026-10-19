@@ -1,11 +1,38 @@
-/** Nigerian Naira formatting for HAMA ENTERPRISE NG */
+/**
+ * Base currency for the store is NGN.
+ * Admin enters prices in Naira.
+ * Customers can view NGN or USD (converted).
+ */
 
-export const CURRENCY = "NGN" as const;
-export const CURRENCY_SYMBOL = "₦";
+export type DisplayCurrency = "NGN" | "USD";
 
-/** Format amount as NGN, e.g. ₦25,000 */
-export function formatNgn(amount: number): string {
-  const n = Number(amount) || 0;
+/** Approximate rate: how many Naira = 1 US Dollar (update as needed) */
+export const NGN_PER_USD = 1600;
+
+export const CURRENCY_STORAGE_KEY = "hama-display-currency";
+
+export function ngnToUsd(amountNgn: number): number {
+  return (Number(amountNgn) || 0) / NGN_PER_USD;
+}
+
+export function usdToNgn(amountUsd: number): number {
+  return (Number(amountUsd) || 0) * NGN_PER_USD;
+}
+
+/** Format a NGN base amount in the chosen display currency */
+export function formatMoney(
+  amountNgn: number,
+  currency: DisplayCurrency = "NGN"
+): string {
+  const n = Number(amountNgn) || 0;
+  if (currency === "USD") {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(ngnToUsd(n));
+  }
   return new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
@@ -14,7 +41,17 @@ export function formatNgn(amount: number): string {
   }).format(n);
 }
 
-/** Compact: ₦1,500.50 when kobo needed */
+/** Show both: primary + secondary in parentheses */
+export function formatMoneyBoth(amountNgn: number, primary: DisplayCurrency): string {
+  const secondary: DisplayCurrency = primary === "NGN" ? "USD" : "NGN";
+  return `${formatMoney(amountNgn, primary)} (${formatMoney(amountNgn, secondary)})`;
+}
+
+/** @deprecated use formatMoney(..., "NGN") */
+export function formatNgn(amount: number): string {
+  return formatMoney(amount, "NGN");
+}
+
 export function formatNgnExact(amount: number): string {
   const n = Number(amount) || 0;
   return new Intl.NumberFormat("en-NG", {

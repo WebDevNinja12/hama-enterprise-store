@@ -15,6 +15,7 @@ import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useCart } from "@/context/CartContext";
 import { useTheme } from "@/context/ThemeContext";
+import { useCurrency } from "@/context/CurrencyContext";
 import Logo from "@/components/Logo";
 import SearchBar from "@/components/SearchBar";
 
@@ -30,6 +31,7 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { totalItems } = useCart();
   const { theme, toggleTheme } = useTheme();
+  const { currency, setCurrency, rateLabel } = useCurrency();
   const { data: session } = useSession();
 
   return (
@@ -65,6 +67,39 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center gap-0.5 sm:gap-1">
+          {/* Currency toggle ₦ / $ */}
+          <div
+            className="mr-1 flex items-center rounded-full border border-[var(--border)] p-0.5"
+            title={rateLabel}
+          >
+            <button
+              type="button"
+              onClick={() => setCurrency("NGN")}
+              className={cn(
+                "rounded-full px-2 py-1 text-[11px] font-bold transition",
+                currency === "NGN"
+                  ? "bg-cyan-500 text-black"
+                  : "text-[var(--muted)] hover:text-[var(--heading)]"
+              )}
+              aria-label="Show prices in Naira"
+            >
+              ₦
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrency("USD")}
+              className={cn(
+                "rounded-full px-2 py-1 text-[11px] font-bold transition",
+                currency === "USD"
+                  ? "bg-cyan-500 text-black"
+                  : "text-[var(--muted)] hover:text-[var(--heading)]"
+              )}
+              aria-label="Show prices in US Dollars"
+            >
+              $
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={toggleTheme}
@@ -111,6 +146,33 @@ export default function Header() {
       {mobileOpen && (
         <div className="border-t border-[var(--border)] bg-[var(--card-solid)] px-4 py-3 md:hidden">
           <SearchBar className="mb-3" />
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs text-[var(--muted)]">Currency:</span>
+            <button
+              type="button"
+              onClick={() => setCurrency("NGN")}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-bold",
+                currency === "NGN"
+                  ? "bg-cyan-500 text-black"
+                  : "border border-[var(--border)] text-[var(--muted)]"
+              )}
+            >
+              ₦ NGN
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrency("USD")}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-bold",
+                currency === "USD"
+                  ? "bg-cyan-500 text-black"
+                  : "border border-[var(--border)] text-[var(--muted)]"
+              )}
+            >
+              $ USD
+            </button>
+          </div>
           <nav className="flex flex-col gap-0.5">
             {navLinks.map((link) => (
               <Link

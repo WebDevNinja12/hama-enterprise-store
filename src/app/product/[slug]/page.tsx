@@ -6,14 +6,15 @@ import { Star, ShoppingCart, ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
+import { useCurrency } from "@/context/CurrencyContext";
 import SafeImage from "@/components/SafeImage";
-import { formatNgn } from "@/lib/currency";
 
 export default function ProductPage() {
   const params = useParams();
   const router = useRouter();
   const slug = params.slug as string;
   const { addItem } = useCart();
+  const { format, formatBoth } = useCurrency();
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const [product, setProduct] = useState<Product | null>(null);
@@ -120,16 +121,19 @@ export default function ProductPage() {
             {product.rating} · {product.stock} in stock
           </div>
 
-          <div className="mb-6 flex items-baseline gap-3">
+          <div className="mb-2 flex items-baseline gap-3">
             <p className="text-3xl font-bold text-cyan-400">
-              {formatNgn(product.price)}
+              {format(product.price)}
             </p>
             {product.compareAt && (
               <p className="text-lg text-[var(--muted)] line-through">
-                {formatNgn(product.compareAt)}
+                {format(product.compareAt)}
               </p>
             )}
           </div>
+          <p className="mb-6 text-xs text-[var(--muted)]">
+            {formatBoth(product.price)}
+          </p>
 
           <p className="mb-8 leading-relaxed text-[var(--muted)]">
             {product.description}

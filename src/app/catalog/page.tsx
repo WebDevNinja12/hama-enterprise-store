@@ -6,11 +6,12 @@ import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
+import { useCurrency } from "@/context/CurrencyContext";
 import SafeImage from "@/components/SafeImage";
-import { formatNgn } from "@/lib/currency";
 
 function CatalogInner() {
   const { addItem, getQtyInCart } = useCart();
+  const { format, formatBoth, currency } = useCurrency();
   const searchParams = useSearchParams();
   const qParam = (searchParams.get("q") || "").trim().toLowerCase();
   const [category, setCategory] = useState("All");
@@ -108,7 +109,9 @@ function CatalogInner() {
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           {loading ? "Loading…" : `${filtered.length} products`}
-          {qParam ? ` matching “${qParam}”` : ""} · Prices in NGN (₦)
+          {qParam ? ` matching “${qParam}”` : ""} · Showing {" "}
+          <span className="text-cyan-400">{currency}</span>
+          {" "}(toggle ₦ / $ in the header)
         </p>
       </div>
 
@@ -132,7 +135,7 @@ function CatalogInner() {
         <p className="text-[var(--muted)]">Loading products…</p>
       ) : filtered.length === 0 ? (
         <div className="card p-10 text-center text-[var(--muted)]">
-          No products yet. Admin can add real products with image URLs in the admin panel.
+          No products yet. Admin can add real products (price in NGN) in the admin panel.
         </div>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -185,9 +188,14 @@ function CatalogInner() {
                     </p>
                   )}
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-lg font-bold text-[var(--heading)]">
-                      {formatNgn(p.price)}
-                    </p>
+                    <div>
+                      <p className="text-lg font-bold text-[var(--heading)]">
+                        {format(p.price)}
+                      </p>
+                      <p className="text-[10px] text-[var(--muted)]">
+                        {formatBoth(p.price).split("(")[1]?.replace(")", "")}
+                      </p>
+                    </div>
                     <button
                       onClick={() => handleAdd(p)}
                       disabled={soldOut || atMax}
