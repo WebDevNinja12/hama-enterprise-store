@@ -89,7 +89,6 @@ const providers: Provider[] = [
         })
         .catch(() => {});
 
-      // Minimal user object — never put image/base64 in the token
       return {
         id: user.id,
         email: user.email,
@@ -156,15 +155,47 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      if (account?.provider === "google" && user.email) {
+        const existing = await prisma.user.findUnique({
+          where: { email: user.email.toLowerCase() },
+          select: { id: true, role: true },
+        });
+        if (existing) {
+          user.id = existing.id;
+          (user as { role?: Role }).role = existing.role;
+        } else {
+          (user as { role?: Role }).role = "USER";
+        }
+      }
+      return true;
+    },
+    async jwt({ token, user, account }) {
       const now = Math.floor(Date.now() / 1000);
-
-      // Strip anything bulky — keep JWT tiny to avoid 494 REQUEST_HEADER_TOO_LARGE
       const slim: Record<string, unknown> = {};
 
       if (user) {
-        slim.sub = user.id;
-        slim.role = (user as { role?: Role }).role ?? "USER";
+        let role: Role = (user as { role?: Role }).role ?? "USER";
+        let sub = user.id;
+
+        // Google: resolve DB user id + role (never put picture in JWT)
+        if (account?.provider === "google" && user.email) {
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { email: user.email.toLowerCase() },
+              select: { id: true, role: true },
+            });
+            if (dbUser) {
+              sub = dbUser.id;
+              role = dbUser.role;
+            }
+          } catch {
+            /* keep defaults */
+          }
+        }
+
+        slim.sub = sub;
+        slim.role = role;
         slim.la = now;
         return slim as typeof token;
       }
@@ -202,7 +233,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return session;
       }
 
-      // Load display fields from DB only when needed (not in cookie)
       let name: string | null = null;
       let email: string | null = null;
       try {
