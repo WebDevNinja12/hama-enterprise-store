@@ -12,6 +12,7 @@ import {
   COOKIE_BASE,
   isProduction,
 } from "@/lib/session-config";
+import { applyClearAuthCookies } from "@/lib/clear-auth-cookies";
 import { rateLimitIncr } from "@/lib/redis";
 
 function clientIp(req: NextRequest): string {
@@ -28,7 +29,6 @@ function randomId(): string {
   return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Paths that must never be rate-limited or bot-blocked */
 function isAssetOrOptimizer(pathname: string): boolean {
   if (pathname.startsWith("/_next/image")) return true;
   if (pathname.startsWith("/_next/static")) return true;
@@ -42,24 +42,25 @@ export async function middleware(req: NextRequest) {
   const ua = req.headers.get("user-agent") || "";
   const ip = clientIp(req);
 
-  // Image optimizer + static assets: pass through, no rate limit / bot block
   if (isAssetOrOptimizer(pathname)) {
     return NextResponse.next();
   }
 
-  // Paystack webhooks
+  // Always allow cookie-clear endpoint (recovery from 494)
+  if (pathname === "/api/clear-cookies" || pathname === "/clear-cookies") {
+    return NextResponse.next();
+  }
+
   if (PAYSTACK_PATH.test(pathname)) {
     return NextResponse.next();
   }
 
-  // Bot filter — never apply to image optimizer (already returned)
   if (ua && BAD_BOTS.test(ua) && !ALLOWED_BOTS.test(ua)) {
     return NextResponse.json({ error: "Forbidden", code: 403 }, { status: 403 });
   }
 
   const isAllowedBot = ALLOWED_BOTS.test(ua);
 
-  // Rate limit via Redis (falls back to memory if Upstash not set)
   if (!isAllowedBot) {
     const isApi = pathname.startsWith("/api/");
     const { ok } = await rateLimitIncr(
@@ -79,11 +80,12 @@ export async function middleware(req: NextRequest) {
   }
 
   const cookieHeader = req.headers.get("cookie") || "";
-  if (cookieHeader.length > 4096) {
-    const res = NextResponse.redirect(new URL("/error?code=431", req.url));
-    res.cookies.set(customerCookieName(), "", { ...COOKIE_BASE, maxAge: 0 });
-    res.cookies.set(adminCookieName(), "", { ...COOKIE_BASE, maxAge: 0 });
-    return res;
+
+  // Prevent 494 / 431: clear cookies early when header is getting large
+  // Vercel edge often rejects ~8KB; clear well before that.
+  if (cookieHeader.length > 2800) {
+    const res = NextResponse.redirect(new URL("/error?code=494", req.url));
+    return applyClearAuthCookies(res);
   }
 
   const res = NextResponse.next();
@@ -135,9 +137,7 @@ export async function middleware(req: NextRequest) {
             { status: 401 }
           )
         : NextResponse.redirect(new URL("/login?reason=idle", req.url));
-      out.cookies.set(customerCookieName(), "", { ...COOKIE_BASE, maxAge: 0 });
-      out.cookies.set(adminCookieName(), "", { ...COOKIE_BASE, maxAge: 0 });
-      return out;
+      return applyClearAuthCookies(out);
     }
 
     if (isAdminPath && role !== "ADMIN") {
@@ -148,6 +148,7 @@ export async function middleware(req: NextRequest) {
     }
 
     if (role === "ADMIN") {
+      // Tiny flag only — not a second full session JWT
       res.cookies.set(adminCookieName(), "1", {
         ...COOKIE_BASE,
         maxAge: Math.floor(SESSION.ADMIN_IDLE_MS / 1000),

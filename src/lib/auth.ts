@@ -9,7 +9,6 @@ import type { Role } from "@prisma/client";
 import {
   SESSION,
   customerCookieName,
-  adminCookieName,
   COOKIE_BASE,
   isProduction,
 } from "./session-config";
@@ -90,6 +89,7 @@ const providers: Provider[] = [
         })
         .catch(() => {});
 
+      // Minimal user object — never put image/base64 in the token
       return {
         id: user.id,
         email: user.email,
@@ -116,7 +116,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "jwt",
     maxAge: SESSION.JWT_MAX_AGE_SEC,
-    updateAge: 60,
+    updateAge: 120,
   },
   jwt: {
     maxAge: SESSION.JWT_MAX_AGE_SEC,
@@ -137,9 +137,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     callbackUrl: {
       name: isProduction() ? "__Secure-hama.callback" : "hama.callback",
       options: {
-        ...COOKIE_BASE,
         httpOnly: true,
-        maxAge: 60 * 15,
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction(),
+        maxAge: 60 * 10,
       },
     },
     csrfToken: {
@@ -154,18 +156,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
-    async jwt({ token, user, trigger }) {
+    async jwt({ token, user }) {
       const now = Math.floor(Date.now() / 1000);
 
+      // Strip anything bulky — keep JWT tiny to avoid 494 REQUEST_HEADER_TOO_LARGE
+      const slim: Record<string, unknown> = {};
+
       if (user) {
-        token.sub = user.id;
-        token.role = (user as { role?: Role }).role ?? "USER";
-        token.name = user.name ?? undefined;
-        token.email = user.email ?? undefined;
-        token.la = now;
-        delete token.picture;
-        delete token.image;
-        return token;
+        slim.sub = user.id;
+        slim.role = (user as { role?: Role }).role ?? "USER";
+        slim.la = now;
+        return slim as typeof token;
+      }
+
+      if (!token.sub) {
+        return { exp: 0 } as typeof token;
       }
 
       const role = (token.role as Role) || "USER";
@@ -179,13 +184,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return { exp: 0 } as typeof token;
       }
 
-      if (trigger === "update" || now - lastActive > 30) {
-        token.la = now;
-      }
+      slim.sub = token.sub;
+      slim.role = role;
+      slim.la = now - lastActive > 60 ? now : lastActive;
 
-      delete token.picture;
-      delete token.image;
-      return token;
+      return slim as typeof token;
     },
     async session({ session, token }) {
       if (!token?.sub || token.exp === 0) {
@@ -199,11 +202,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return session;
       }
 
+      // Load display fields from DB only when needed (not in cookie)
+      let name: string | null = null;
+      let email: string | null = null;
+      try {
+        const u = await prisma.user.findUnique({
+          where: { id: String(token.sub) },
+          select: { name: true, email: true },
+        });
+        name = u?.name ?? null;
+        email = u?.email ?? null;
+      } catch {
+        /* ignore */
+      }
+
       session.user = {
         id: String(token.sub),
         role: (token.role as Role) || "USER",
-        name: (token.name as string) || null,
-        email: (token.email as string) || null,
+        name,
+        email,
         image: token.role === "ADMIN" ? "/logo.png" : null,
       };
       return session;
@@ -212,4 +229,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
 });
 
-export { adminCookieName, customerCookieName };
+export { customerCookieName };

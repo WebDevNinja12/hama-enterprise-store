@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 const MESSAGES: Record<
   string,
@@ -27,7 +27,7 @@ const MESSAGES: Record<
   },
   "413": {
     title: "Upload too large",
-    body: "The file or request body is too large. Use a smaller image (under 600KB).",
+    body: "The file or request body is too large. Use a smaller image.",
   },
   "429": {
     title: "Too many requests",
@@ -35,12 +35,12 @@ const MESSAGES: Record<
   },
   "431": {
     title: "Cookies too large",
-    body: "Your browser sent oversized cookies. We cleared them — sign in again.",
+    body: "Your browser sent oversized cookies. Clearing them now — then sign in again.",
     action: "/login",
   },
   "494": {
-    title: "Request header too large",
-    body: "Browser cookies were too big. Clear site cookies or use a private window, then sign in again.",
+    title: "Request header too large (494)",
+    body: "Browser cookies were too big. We are clearing them automatically — then sign in again.",
     action: "/login",
   },
   "500": {
@@ -53,7 +53,7 @@ const MESSAGES: Record<
   },
   "503": {
     title: "Service unavailable",
-    body: "The store is briefly unavailable. Automatic recovery is in progress.",
+    body: "The store is briefly unavailable. Try again shortly.",
   },
   "504": {
     title: "Timeout",
@@ -65,6 +65,15 @@ function ErrorBody() {
   const sp = useSearchParams();
   const code = sp.get("code") || "500";
   const info = MESSAGES[code] || MESSAGES["500"];
+  const [cleared, setCleared] = useState(false);
+
+  useEffect(() => {
+    if (code === "494" || code === "431") {
+      fetch("/api/clear-cookies", { method: "POST", credentials: "include" })
+        .then(() => setCleared(true))
+        .catch(() => setCleared(true));
+    }
+  }, [code]);
 
   return (
     <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-4 text-center">
@@ -72,22 +81,39 @@ function ErrorBody() {
       <h1 className="mt-2 text-2xl font-bold text-[var(--heading)]">
         {info.title}
       </h1>
-      <p className="mt-2 mb-6 text-sm text-[var(--muted)]">{info.body}</p>
+      <p className="mt-2 mb-2 text-sm text-[var(--muted)]">{info.body}</p>
+      {(code === "494" || code === "431") && (
+        <p className="mb-6 text-xs text-emerald-400">
+          {cleared
+            ? "Cookies cleared. You can sign in again."
+            : "Clearing cookies…"}
+        </p>
+      )}
       <div className="flex flex-wrap justify-center gap-3">
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            fetch("/api/clear-cookies", {
+              method: "POST",
+              credentials: "include",
+            }).finally(() => {
+              window.location.href = info.action || "/";
+            });
+          }}
           className="btn-primary px-5 py-2.5 text-sm"
         >
-          Retry
+          Clear cookies & continue
         </button>
-        <Link
-          href={info.action || "/"}
-          className="btn-secondary px-5 py-2.5 text-sm"
-        >
-          {info.action ? "Sign in" : "Home"}
+        <Link href="/" className="btn-secondary px-5 py-2.5 text-sm">
+          Home
         </Link>
       </div>
+      {(code === "494" || code === "431") && (
+        <p className="mt-6 max-w-sm text-[11px] text-[var(--muted)]">
+          If the site still will not load: open browser settings → clear site
+          data for this domain, or use a private/incognito window.
+        </p>
+      )}
     </div>
   );
 }
