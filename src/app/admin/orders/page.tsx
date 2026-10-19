@@ -13,6 +13,7 @@ import {
   Clock,
   Trash2,
 } from "lucide-react";
+import { formatNgn } from "@/lib/currency";
 
 type OrderItem = {
   id: string;
@@ -88,7 +89,6 @@ export default function AdminOrdersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
-
       setOrders((prev) =>
         prev.map((o) => (o.id === orderId ? { ...o, status } : o))
       );
@@ -186,7 +186,7 @@ export default function AdminOrdersPage() {
             Order management
           </h1>
           <p className="text-sm text-[var(--muted)]">
-            Select orders to clear history · delivered orders stay final for status changes
+            Amounts in NGN (₦) · select orders to clear history
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -202,9 +202,7 @@ export default function AdminOrdersPage() {
             className="inline-flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/20 disabled:opacity-40"
           >
             <Trash2 className="h-4 w-4" />
-            {clearing
-              ? "Clearing…"
-              : `Clear selected (${selected.size})`}
+            {clearing ? "Clearing…" : `Clear selected (${selected.size})`}
           </button>
         </div>
       </div>
@@ -229,8 +227,9 @@ export default function AdminOrdersPage() {
                 : "border border-[var(--border)] text-[var(--muted)] hover:border-cyan-500/40"
             }`}
           >
-            {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}{" "}
-            ({counts[s]})
+            {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()} ({
+              counts[s]
+            })
           </button>
         ))}
       </div>
@@ -303,7 +302,7 @@ export default function AdminOrdersPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold text-[var(--heading)]">
-                      ${Number(order.total).toFixed(2)}
+                      {formatNgn(Number(order.total))}
                     </p>
                     <span
                       className={`badge text-[10px] ${
@@ -322,7 +321,7 @@ export default function AdminOrdersPage() {
                         {item.productName} × {item.quantity}
                       </span>
                       <span className="text-[var(--heading)]">
-                        ${(Number(item.price) * item.quantity).toFixed(2)}
+                        {formatNgn(Number(item.price) * item.quantity)}
                       </span>
                     </li>
                   ))}
