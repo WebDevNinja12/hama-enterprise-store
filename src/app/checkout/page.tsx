@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -12,8 +12,15 @@ import {
   CheckCircle,
   Building2,
   Copy,
+  Phone,
 } from "lucide-react";
 import { useCart } from "@/context/CartContext";
+import {
+  NIGERIA_STATES,
+  FREE_SHIPPING_MIN,
+  calcShipping,
+  isValidNgPhone,
+} from "@/lib/shipping";
 
 type PaymentMethod = "card" | "bank" | "crypto";
 
@@ -45,11 +52,11 @@ export default function CheckoutPage() {
     phone: "",
     address: "",
     city: "",
+    state: "Lagos",
     postal: "",
     transferRef: "",
   });
 
-  // Require account
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login?callbackUrl=/checkout");
@@ -70,9 +77,12 @@ export default function CheckoutPage() {
     }
   }, [session]);
 
-  const shipping = subtotal >= 500 || subtotal === 0 ? 0 : 25;
-  const tax = subtotal * 0.08;
-  const total = subtotal + shipping + tax;
+  const ship = useMemo(
+    () => calcShipping(subtotal, form.state),
+    [subtotal, form.state]
+  );
+  const tax = Number((subtotal * 0.075).toFixed(2)); // 7.5% VAT-style
+  const total = subtotal + ship.shipping + tax;
 
   function copyAccountNumber() {
     navigator.clipboard.writeText(BANK_DETAILS.accountNumber);
@@ -150,9 +160,16 @@ export default function CheckoutPage() {
     setPlacing(true);
     setError("");
 
+    if (!isValidNgPhone(form.phone)) {
+      setError("Enter a valid phone number (e.g. 0803 123 4567 or +234…).");
+      setPlacing(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: items.map((i) => ({
@@ -165,9 +182,10 @@ export default function CheckoutPage() {
           firstName: form.firstName,
           lastName: form.lastName,
           email: form.email || session?.user?.email,
-          phone: form.phone || undefined,
+          phone: form.phone.trim(),
           address: form.address,
           city: form.city,
+          state: form.state,
           postal: form.postal,
           country: "NG",
           paymentMethod,
@@ -283,6 +301,26 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="sm:col-span-2">
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs text-[var(--muted)]">
+                    <Phone className="h-3.5 w-3.5" /> Phone number *
+                  </label>
+                  <input
+                    required
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="0803 123 4567 or +234 803 123 4567"
+                    className="input"
+                    value={form.phone}
+                    onChange={(e) =>
+                      setForm({ ...form, phone: e.target.value })
+                    }
+                  />
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">
+                    Required for delivery updates
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs text-[var(--muted)]">
                     Street Address
                   </label>
@@ -297,7 +335,7 @@ export default function CheckoutPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs text-[var(--muted)]">
-                    City
+                    City / Town
                   </label>
                   <input
                     required
@@ -305,6 +343,23 @@ export default function CheckoutPage() {
                     value={form.city}
                     onChange={(e) => setForm({ ...form, city: e.target.value })}
                   />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs text-[var(--muted)]">
+                    State
+                  </label>
+                  <select
+                    required
+                    className="input"
+                    value={form.state}
+                    onChange={(e) => setForm({ ...form, state: e.target.value })}
+                  >
+                    {NIGERIA_STATES.map((s) => (
+                      <option key={s.name} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs text-[var(--muted)]">
@@ -318,6 +373,15 @@ export default function CheckoutPage() {
                       setForm({ ...form, postal: e.target.value })
                     }
                   />
+                </div>
+                <div className="sm:col-span-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--muted)]">
+                  Shipping to <strong className="text-[var(--heading)]">{form.state}</strong>:{" "}
+                  {ship.free ? (
+                    <span className="text-emerald-400">FREE</span>
+                  ) : (
+                    <span className="text-cyan-400">${ship.shipping.toFixed(2)}</span>
+                  )}{" "}
+                  · Free shipping on orders ${FREE_SHIPPING_MIN}+
                 </div>
               </div>
             </div>
@@ -340,6 +404,7 @@ export default function CheckoutPage() {
                   <p className="mb-2 text-cyan-400">
                     Transfer ${total.toFixed(2)} to {BANK_DETAILS.accountName}
                   </p>
+                  <p className="text-[var(--muted)]">{BANK_DETAILS.bankName}</p>
                   <p className="font-mono text-[var(--heading)]">
                     {BANK_DETAILS.accountNumber}{" "}
                     <button type="button" onClick={copyAccountNumber}>
@@ -347,9 +412,36 @@ export default function CheckoutPage() {
                     </button>
                     {copied && " Copied"}
                   </p>
+                  <label className="mt-3 mb-1.5 block text-xs text-[var(--muted)]">
+                    Transfer reference (optional)
+                  </label>
+                  <input
+                    className="input"
+                    value={form.transferRef}
+                    onChange={(e) =>
+                      setForm({ ...form, transferRef: e.target.value })
+                    }
+                    placeholder="Bank transfer reference"
+                  />
                 </div>
               )}
             </div>
+
+            <p className="text-xs text-[var(--muted)]">
+              By placing an order you agree to our{" "}
+              <Link href="/terms" className="text-cyan-400 hover:underline">
+                Terms
+              </Link>
+              ,{" "}
+              <Link href="/privacy" className="text-cyan-400 hover:underline">
+                Privacy Policy
+              </Link>
+              , and{" "}
+              <Link href="/refund" className="text-cyan-400 hover:underline">
+                Refund Policy
+              </Link>
+              .
+            </p>
           </div>
 
           <div className="lg:col-span-2">
@@ -361,10 +453,7 @@ export default function CheckoutPage() {
                 {items.map((item) => (
                   <li key={item.id} className="flex justify-between gap-2">
                     <span className="truncate">
-                      {item.emoji} {item.name} × {item.quantity}
-                      {item.stock != null && (
-                        <span className="text-[10px]"> (max {item.stock})</span>
-                      )}
+                      {item.name} × {item.quantity}
                     </span>
                     <span className="text-[var(--heading)]">
                       ${(item.price * item.quantity).toLocaleString()}
@@ -378,11 +467,13 @@ export default function CheckoutPage() {
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Shipping</span>
-                  <span>{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span>
+                  <span>Shipping ({form.state})</span>
+                  <span>
+                    {ship.free ? "FREE" : `$${ship.shipping.toFixed(2)}`}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Tax</span>
+                  <span>Tax (7.5%)</span>
                   <span>${tax.toFixed(2)}</span>
                 </div>
               </div>

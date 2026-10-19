@@ -7,7 +7,6 @@ import {
   BAD_BOTS,
   PAYSTACK_PATH,
   customerCookieName,
-  adminCookieName,
   visitorCookieName,
   COOKIE_BASE,
   isProduction,
@@ -46,8 +45,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Always allow cookie-clear endpoint (recovery from 494)
   if (pathname === "/api/clear-cookies" || pathname === "/clear-cookies") {
+    return NextResponse.next();
+  }
+
+  // Public admin login page — do not require session
+  if (pathname === "/admin/login") {
     return NextResponse.next();
   }
 
@@ -80,9 +83,6 @@ export async function middleware(req: NextRequest) {
   }
 
   const cookieHeader = req.headers.get("cookie") || "";
-
-  // Prevent 494 / 431: clear cookies early when header is getting large
-  // Vercel edge often rejects ~8KB; clear well before that.
   if (cookieHeader.length > 2800) {
     const res = NextResponse.redirect(new URL("/error?code=494", req.url));
     return applyClearAuthCookies(res);
@@ -99,7 +99,8 @@ export async function middleware(req: NextRequest) {
   }
 
   const isAdminPath =
-    pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+    (pathname.startsWith("/admin") && pathname !== "/admin/login") ||
+    pathname.startsWith("/api/admin");
   const isAccountPath =
     pathname.startsWith("/account") ||
     pathname.startsWith("/checkout") ||
@@ -117,6 +118,9 @@ export async function middleware(req: NextRequest) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Unauthorized", code: 401 }, { status: 401 });
       }
+      if (isAdminPath) {
+        return NextResponse.redirect(new URL("/admin/login", req.url));
+      }
       const login = new URL("/login", req.url);
       login.searchParams.set("callbackUrl", pathname);
       return NextResponse.redirect(login);
@@ -131,12 +135,13 @@ export async function middleware(req: NextRequest) {
         : SESSION.CUSTOMER_IDLE_MS / 1000;
 
     if (now - lastActive > idleLimit) {
+      const loginPath = isAdminPath ? "/admin/login?reason=idle" : "/login?reason=idle";
       const out = pathname.startsWith("/api/")
         ? NextResponse.json(
             { error: "Session expired due to inactivity", code: 401 },
             { status: 401 }
           )
-        : NextResponse.redirect(new URL("/login?reason=idle", req.url));
+        : NextResponse.redirect(new URL(loginPath, req.url));
       return applyClearAuthCookies(out);
     }
 
@@ -145,14 +150,6 @@ export async function middleware(req: NextRequest) {
         return NextResponse.json({ error: "Forbidden", code: 403 }, { status: 403 });
       }
       return NextResponse.redirect(new URL("/account", req.url));
-    }
-
-    if (role === "ADMIN") {
-      // Tiny flag only — not a second full session JWT
-      res.cookies.set(adminCookieName(), "1", {
-        ...COOKIE_BASE,
-        maxAge: Math.floor(SESSION.ADMIN_IDLE_MS / 1000),
-      });
     }
   }
 

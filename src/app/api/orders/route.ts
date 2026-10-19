@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import { sendEmail, stockMaxEmailHtml } from "@/lib/email";
+import { calcShipping, isValidNgPhone } from "@/lib/shipping";
 
 const itemSchema = z.object({
   id: z.string(),
@@ -17,9 +18,10 @@ const orderSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email(),
-  phone: z.string().optional(),
+  phone: z.string().min(10, "Phone number is required"),
   address: z.string().min(1),
   city: z.string().min(1),
+  state: z.string().min(1),
   postal: z.string().min(1),
   country: z.string().default("NG"),
   paymentMethod: z.enum(["card", "bank", "crypto"]),
@@ -75,10 +77,17 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const data = orderSchema.parse(body);
+
+    if (!isValidNgPhone(data.phone)) {
+      return NextResponse.json(
+        { error: "Enter a valid phone number (e.g. 0803 123 4567)." },
+        { status: 400 }
+      );
+    }
+
     const userId = session.user.id;
     const email = (session.user.email || data.email).toLowerCase().trim();
 
-    // Enforce stock for StoreProduct items
     for (const item of data.items) {
       const dbProduct = await prisma.storeProduct.findFirst({
         where: {
@@ -102,8 +111,8 @@ export async function POST(req: NextRequest) {
       (sum, i) => sum + i.price * i.quantity,
       0
     );
-    const shipping = subtotal >= 500 || subtotal === 0 ? 0 : 25;
-    const tax = Number((subtotal * 0.08).toFixed(2));
+    const { shipping } = calcShipping(subtotal, data.state);
+    const tax = Number((subtotal * 0.075).toFixed(2));
     const total = Number((subtotal + shipping + tax).toFixed(2));
     const orderNumber = generateOrderNumber();
 
@@ -112,14 +121,14 @@ export async function POST(req: NextRequest) {
         orderNumber,
         userId,
         customerEmail: email,
-        customerPhone: data.phone || null,
+        customerPhone: data.phone.trim(),
         status: data.paymentMethod === "bank" ? "PENDING" : "PROCESSING",
         subtotal,
         shipping,
         tax,
         total,
         shippingName: `${data.firstName} ${data.lastName}`.trim(),
-        shippingAddress: data.address,
+        shippingAddress: `${data.address}, ${data.state}`,
         shippingCity: data.city,
         shippingPostal: data.postal,
         shippingCountry: data.country || "NG",
@@ -138,7 +147,6 @@ export async function POST(req: NextRequest) {
       include: { items: true },
     });
 
-    // Decrement stock & notify admin if max / zero
     for (const item of data.items) {
       const dbProduct = await prisma.storeProduct.findFirst({
         where: {
@@ -172,7 +180,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Invalid order data", details: err.errors },
+        { error: err.errors[0]?.message || "Invalid order data", details: err.errors },
         { status: 400 }
       );
     }

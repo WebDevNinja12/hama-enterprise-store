@@ -71,7 +71,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm text-[var(--muted)]">
               <li>
                 <Link href="/login" className="hover:text-cyan-400">
-                  Sign in
+                  Customer sign in
                 </Link>
               </li>
               <li>
@@ -89,9 +89,24 @@ export default function Footer() {
 
           <div>
             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[var(--heading)]">
-              Company
+              Legal & company
             </p>
             <ul className="space-y-2 text-sm text-[var(--muted)]">
+              <li>
+                <Link href="/terms" className="hover:text-cyan-400">
+                  Terms of Service
+                </Link>
+              </li>
+              <li>
+                <Link href="/privacy" className="hover:text-cyan-400">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/refund" className="hover:text-cyan-400">
+                  Refund Policy
+                </Link>
+              </li>
               <li>
                 <a
                   href={MAIN_SITE}
@@ -100,24 +115,6 @@ export default function Footer() {
                   className="hover:text-cyan-400"
                 >
                   Main website
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://hama-enterprise-ng.vercel.app/gallery.html"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-cyan-400"
-                >
-                  Gallery
-                </a>
-              </li>
-              <li>
-                <a
-                  href="mailto:support@hamaenterprise.ng"
-                  className="hover:text-cyan-400"
-                >
-                  Contact
                 </a>
               </li>
             </ul>
