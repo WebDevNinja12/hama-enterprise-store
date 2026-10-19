@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
 import SafeImage from "@/components/SafeImage";
+import { formatNgn } from "@/lib/currency";
 
 function CatalogInner() {
   const { addItem, getQtyInCart } = useCart();
@@ -107,7 +108,7 @@ function CatalogInner() {
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           {loading ? "Loading…" : `${filtered.length} products`}
-          {qParam ? ` matching “${qParam}”` : ""}
+          {qParam ? ` matching “${qParam}”` : ""} · Prices in NGN (₦)
         </p>
       </div>
 
@@ -185,7 +186,7 @@ function CatalogInner() {
                   )}
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-lg font-bold text-[var(--heading)]">
-                      ${p.price.toLocaleString()}
+                      {formatNgn(p.price)}
                     </p>
                     <button
                       onClick={() => handleAdd(p)}

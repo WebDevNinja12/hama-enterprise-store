@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Minus, Plus, Trash2, ShoppingBag, Clock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { formatCountdown, useCart } from "@/context/CartContext";
+import { formatNgn } from "@/lib/currency";
+import { FREE_SHIPPING_MIN } from "@/lib/shipping";
 
 export default function CartPage() {
   const {
@@ -37,9 +39,10 @@ export default function CartPage() {
     );
   }
 
-  const shipping = subtotal >= 500 ? 0 : 25;
-  const tax = subtotal * 0.08;
-  const total = subtotal + shipping + tax;
+  // Estimate only — final shipping depends on state at checkout
+  const shippingEst = subtotal >= FREE_SHIPPING_MIN ? 0 : 2_500;
+  const tax = subtotal * 0.075;
+  const total = subtotal + shippingEst + tax;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
@@ -47,7 +50,7 @@ export default function CartPage() {
         <div>
           <h1 className="text-3xl font-bold text-[var(--heading)]">Cart</h1>
           <p className="text-sm text-[var(--muted)]">
-            {totalItems} item{totalItems === 1 ? "" : "s"}
+            {totalItems} item{totalItems === 1 ? "" : "s"} · Prices in NGN
           </p>
         </div>
         <button
@@ -84,9 +87,7 @@ export default function CartPage() {
                   >
                     {item.name}
                   </Link>
-                  <p className="text-sm text-cyan-400">
-                    ${item.price.toLocaleString()}
-                  </p>
+                  <p className="text-sm text-cyan-400">{formatNgn(item.price)}</p>
                   <p
                     className={`mt-1 inline-flex items-center gap-1.5 font-mono text-xs font-semibold tabular-nums ${
                       urgent ? "text-amber-400" : "text-cyan-400"
@@ -130,23 +131,29 @@ export default function CartPage() {
             <div className="mb-4 space-y-2 text-sm text-[var(--muted)]">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
+                <span>{formatNgn(subtotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Shipping</span>
-                <span>{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span>
+                <span>Shipping (est.)</span>
+                <span>
+                  {shippingEst === 0 ? "FREE" : formatNgn(shippingEst)}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span>Tax (est.)</span>
-                <span>${tax.toFixed(2)}</span>
+                <span>Tax (7.5% est.)</span>
+                <span>{formatNgn(tax)}</span>
               </div>
             </div>
             <div className="mb-5 flex justify-between border-t border-[var(--border)] pt-4">
-              <span className="text-[var(--muted)]">Total</span>
+              <span className="text-[var(--muted)]">Total (est.)</span>
               <span className="text-xl font-bold text-cyan-400">
-                ${total.toFixed(2)}
+                {formatNgn(total)}
               </span>
             </div>
+            <p className="mb-3 text-[11px] text-[var(--muted)]">
+              Final shipping depends on your state at checkout. Free from{" "}
+              {formatNgn(FREE_SHIPPING_MIN)}.
+            </p>
             <Link
               href="/checkout"
               className="btn-primary flex w-full items-center justify-center py-3 text-sm"

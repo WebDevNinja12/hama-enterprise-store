@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { productImage, type Product } from "@/lib/products";
 import { useCart } from "@/context/CartContext";
 import SafeImage from "@/components/SafeImage";
+import { formatNgn } from "@/lib/currency";
 
 export default function ProductPage() {
   const params = useParams();
@@ -121,11 +122,11 @@ export default function ProductPage() {
 
           <div className="mb-6 flex items-baseline gap-3">
             <p className="text-3xl font-bold text-cyan-400">
-              ${product.price.toLocaleString()}
+              {formatNgn(product.price)}
             </p>
             {product.compareAt && (
               <p className="text-lg text-[var(--muted)] line-through">
-                ${product.compareAt.toLocaleString()}
+                {formatNgn(product.compareAt)}
               </p>
             )}
           </div>

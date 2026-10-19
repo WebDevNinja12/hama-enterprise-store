@@ -1,6 +1,9 @@
-/** Nigeria shipping rules for HAMA ENTERPRISE NG (amounts in USD to match store). */
+/** Nigeria shipping rules — amounts in NGN */
 
-export const FREE_SHIPPING_MIN = 500;
+import { formatNgn } from "./currency";
+
+/** Free shipping when subtotal is at least this (NGN) */
+export const FREE_SHIPPING_MIN = 150_000;
 
 export type ShippingZone =
   | "lagos"
@@ -53,16 +56,17 @@ export const NIGERIA_STATES: { name: string; zone: ShippingZone }[] = [
   { name: "Taraba", zone: "north_east" },
 ];
 
+/** Flat rates in NGN by zone */
 const ZONE_RATES: Record<ShippingZone, number> = {
-  lagos: 8,
-  abuja: 12,
-  south_west: 15,
-  south_south: 18,
-  south_east: 18,
-  north_central: 20,
-  north_west: 22,
-  north_east: 25,
-  other: 30,
+  lagos: 2_500,
+  abuja: 3_500,
+  south_west: 4_000,
+  south_south: 5_000,
+  south_east: 5_000,
+  north_central: 5_500,
+  north_west: 6_000,
+  north_east: 6_500,
+  other: 7_500,
 };
 
 export function zoneForState(stateName: string): ShippingZone {
@@ -86,7 +90,7 @@ export function calcShipping(subtotal: number, stateName: string): {
       shipping: 0,
       zone: zoneForState(stateName),
       free: true,
-      label: `Free shipping (orders $${FREE_SHIPPING_MIN}+)`,
+      label: `Free shipping (orders ${formatNgn(FREE_SHIPPING_MIN)}+)`,
     };
   }
   const zone = zoneForState(stateName);
@@ -99,9 +103,7 @@ export function calcShipping(subtotal: number, stateName: string): {
   };
 }
 
-/** Simple NG phone check: 10–14 digits after stripping spaces */
 export function isValidNgPhone(phone: string): boolean {
   const digits = phone.replace(/\D/g, "");
-  // 0803… (11) or 234803… (13–14)
   return digits.length >= 10 && digits.length <= 14;
 }
