@@ -205,3 +205,15 @@ model GalleryMedia {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
+
+// Single promo video for main site About page (key = "about-promo")
+model SiteMedia {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  title     String?
+  url       String   @db.Text
+  poster    String?  @db.Text
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

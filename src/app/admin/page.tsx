@@ -8,6 +8,7 @@ import {
   Package,
   ShoppingBag,
   Image as ImageIcon,
+  Video,
   Shield,
   Database,
   CheckCircle2,
@@ -68,6 +69,12 @@ export default function AdminHomePage() {
       desc: "Images/videos + narration for main site",
       icon: ImageIcon,
     },
+    {
+      href: "/admin/about-video",
+      title: "About video",
+      desc: "Promo video for About page on main site",
+      icon: Video,
+    },
   ];
 
   return (
@@ -82,7 +89,7 @@ export default function AdminHomePage() {
         </div>
       </div>
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {links.map((l) => (
           <Link key={l.href} href={l.href} className="card p-5 transition hover:border-cyan-500/40">
             <l.icon className="mb-3 h-6 w-6 text-cyan-400" />
