@@ -15,13 +15,13 @@ import {
   Phone,
 } from "lucide-react";
 import { useCart } from "@/context/CartContext";
+import { useCurrency } from "@/context/CurrencyContext";
 import {
   NIGERIA_STATES,
   FREE_SHIPPING_MIN,
   calcShipping,
   isValidNgPhone,
 } from "@/lib/shipping";
-import { formatNgn } from "@/lib/currency";
 
 type PaymentMethod = "card" | "bank" | "crypto";
 
@@ -36,6 +36,7 @@ export default function CheckoutPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { items, subtotal, clearCart, totalItems } = useCart();
+  const { format, formatBoth, currency } = useCurrency();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -123,7 +124,7 @@ export default function CheckoutPage() {
           </span>
         </p>
         <p className="mb-6 text-sm text-[var(--muted)]">
-          Total: {formatNgn(orderResult.total)} · {orderResult.paymentMethod}
+          Total: {format(orderResult.total)} · {orderResult.paymentMethod}
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
@@ -242,7 +243,7 @@ export default function CheckoutPage() {
       <div className="mb-2 flex items-center gap-2 text-xs text-[var(--muted)]">
         <Lock className="h-3.5 w-3.5 text-cyan-400" />
         <span className="font-medium text-cyan-400">SECURE CHECKOUT</span>
-        <span>· Prices in NGN (₦)</span>
+        <span>· Showing {currency} (toggle ₦/$ in header)</span>
       </div>
       <h1 className="mb-8 text-3xl font-bold text-[var(--heading)]">Checkout</h1>
 
@@ -378,9 +379,9 @@ export default function CheckoutPage() {
                   {ship.free ? (
                     <span className="text-emerald-400">FREE</span>
                   ) : (
-                    <span className="text-cyan-400">{formatNgn(ship.shipping)}</span>
+                    <span className="text-cyan-400">{format(ship.shipping)}</span>
                   )}{" "}
-                  · Free shipping from {formatNgn(FREE_SHIPPING_MIN)}
+                  · Free from {format(FREE_SHIPPING_MIN)}
                 </div>
               </div>
             </div>
@@ -401,7 +402,10 @@ export default function CheckoutPage() {
               {paymentMethod === "bank" && (
                 <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-5 text-sm">
                   <p className="mb-2 text-cyan-400">
-                    Transfer {formatNgn(total)} to {BANK_DETAILS.accountName}
+                    Transfer {format(total)} to {BANK_DETAILS.accountName}
+                  </p>
+                  <p className="text-xs text-[var(--muted)] mb-1">
+                    {formatBoth(total)}
                   </p>
                   <p className="text-[var(--muted)]">{BANK_DETAILS.bankName}</p>
                   <p className="font-mono text-[var(--heading)]">
@@ -455,7 +459,7 @@ export default function CheckoutPage() {
                       {item.name} × {item.quantity}
                     </span>
                     <span className="text-[var(--heading)]">
-                      {formatNgn(item.price * item.quantity)}
+                      {format(item.price * item.quantity)}
                     </span>
                   </li>
                 ))}
@@ -463,25 +467,28 @@ export default function CheckoutPage() {
               <div className="mb-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm text-[var(--muted)]">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span>{formatNgn(subtotal)}</span>
+                  <span>{format(subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping ({form.state})</span>
                   <span>
-                    {ship.free ? "FREE" : formatNgn(ship.shipping)}
+                    {ship.free ? "FREE" : format(ship.shipping)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tax (7.5%)</span>
-                  <span>{formatNgn(tax)}</span>
+                  <span>{format(tax)}</span>
                 </div>
               </div>
-              <div className="mb-5 flex justify-between border-t border-[var(--border)] pt-4">
+              <div className="mb-2 flex justify-between border-t border-[var(--border)] pt-4">
                 <span className="text-[var(--muted)]">Total</span>
                 <span className="text-2xl font-bold text-cyan-400">
-                  {formatNgn(total)}
+                  {format(total)}
                 </span>
               </div>
+              <p className="mb-5 text-[11px] text-[var(--muted)]">
+                {formatBoth(total)}
+              </p>
               <button
                 type="submit"
                 disabled={placing}
