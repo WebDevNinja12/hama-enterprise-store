@@ -21,6 +21,7 @@ import {
   calcShipping,
   isValidNgPhone,
 } from "@/lib/shipping";
+import { formatNgn } from "@/lib/currency";
 
 type PaymentMethod = "card" | "bank" | "crypto";
 
@@ -81,7 +82,7 @@ export default function CheckoutPage() {
     () => calcShipping(subtotal, form.state),
     [subtotal, form.state]
   );
-  const tax = Number((subtotal * 0.075).toFixed(2)); // 7.5% VAT-style
+  const tax = Number((subtotal * 0.075).toFixed(2));
   const total = subtotal + ship.shipping + tax;
 
   function copyAccountNumber() {
@@ -122,7 +123,7 @@ export default function CheckoutPage() {
           </span>
         </p>
         <p className="mb-6 text-sm text-[var(--muted)]">
-          Total: ${orderResult.total.toFixed(2)} · {orderResult.paymentMethod}
+          Total: {formatNgn(orderResult.total)} · {orderResult.paymentMethod}
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
@@ -241,7 +242,7 @@ export default function CheckoutPage() {
       <div className="mb-2 flex items-center gap-2 text-xs text-[var(--muted)]">
         <Lock className="h-3.5 w-3.5 text-cyan-400" />
         <span className="font-medium text-cyan-400">SECURE CHECKOUT</span>
-        <span>· Account required</span>
+        <span>· Prices in NGN (₦)</span>
       </div>
       <h1 className="mb-8 text-3xl font-bold text-[var(--heading)]">Checkout</h1>
 
@@ -316,9 +317,6 @@ export default function CheckoutPage() {
                       setForm({ ...form, phone: e.target.value })
                     }
                   />
-                  <p className="mt-1 text-[11px] text-[var(--muted)]">
-                    Required for delivery updates
-                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs text-[var(--muted)]">
@@ -375,13 +373,14 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="sm:col-span-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--muted)]">
-                  Shipping to <strong className="text-[var(--heading)]">{form.state}</strong>:{" "}
+                  Shipping to{" "}
+                  <strong className="text-[var(--heading)]">{form.state}</strong>:{" "}
                   {ship.free ? (
                     <span className="text-emerald-400">FREE</span>
                   ) : (
-                    <span className="text-cyan-400">${ship.shipping.toFixed(2)}</span>
+                    <span className="text-cyan-400">{formatNgn(ship.shipping)}</span>
                   )}{" "}
-                  · Free shipping on orders ${FREE_SHIPPING_MIN}+
+                  · Free shipping from {formatNgn(FREE_SHIPPING_MIN)}
                 </div>
               </div>
             </div>
@@ -402,7 +401,7 @@ export default function CheckoutPage() {
               {paymentMethod === "bank" && (
                 <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-5 text-sm">
                   <p className="mb-2 text-cyan-400">
-                    Transfer ${total.toFixed(2)} to {BANK_DETAILS.accountName}
+                    Transfer {formatNgn(total)} to {BANK_DETAILS.accountName}
                   </p>
                   <p className="text-[var(--muted)]">{BANK_DETAILS.bankName}</p>
                   <p className="font-mono text-[var(--heading)]">
@@ -456,7 +455,7 @@ export default function CheckoutPage() {
                       {item.name} × {item.quantity}
                     </span>
                     <span className="text-[var(--heading)]">
-                      ${(item.price * item.quantity).toLocaleString()}
+                      {formatNgn(item.price * item.quantity)}
                     </span>
                   </li>
                 ))}
@@ -464,23 +463,23 @@ export default function CheckoutPage() {
               <div className="mb-4 space-y-2 border-t border-[var(--border)] pt-4 text-sm text-[var(--muted)]">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span>${subtotal.toFixed(2)}</span>
+                  <span>{formatNgn(subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping ({form.state})</span>
                   <span>
-                    {ship.free ? "FREE" : `$${ship.shipping.toFixed(2)}`}
+                    {ship.free ? "FREE" : formatNgn(ship.shipping)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tax (7.5%)</span>
-                  <span>${tax.toFixed(2)}</span>
+                  <span>{formatNgn(tax)}</span>
                 </div>
               </div>
               <div className="mb-5 flex justify-between border-t border-[var(--border)] pt-4">
                 <span className="text-[var(--muted)]">Total</span>
                 <span className="text-2xl font-bold text-cyan-400">
-                  ${total.toFixed(2)}
+                  {formatNgn(total)}
                 </span>
               </div>
               <button

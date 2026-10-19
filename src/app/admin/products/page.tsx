@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import MediaUploader from "@/components/MediaUploader";
+import { formatNgn } from "@/lib/currency";
 
 type Product = {
   id: string;
@@ -104,7 +105,7 @@ export default function AdminProductsPage() {
 
       const price = Number(form.price);
       if (!Number.isFinite(price) || price <= 0) {
-        throw new Error("Enter a valid price greater than 0");
+        throw new Error("Enter a valid price in NGN greater than 0");
       }
 
       const res = await fetch("/api/products", {
@@ -219,7 +220,7 @@ export default function AdminProductsPage() {
           </Link>
           <h1 className="text-2xl font-bold text-[var(--heading)]">Products</h1>
           <p className="text-sm text-[var(--muted)]">
-            Paste an https image URL or upload to Blob · then Save
+            Prices in <strong className="text-[var(--heading)]">NGN (₦)</strong> · paste https image URL or Blob upload
           </p>
         </div>
         <button
@@ -327,13 +328,16 @@ export default function AdminProductsPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs text-[var(--muted)]">Price ($)</label>
+            <label className="mb-1.5 block text-xs text-[var(--muted)]">
+              Price (₦ NGN)
+            </label>
             <input
               type="number"
-              step="0.01"
-              min="0.01"
+              step="1"
+              min="1"
               className="input"
               required
+              placeholder="e.g. 25000"
               value={form.price}
               onChange={(e) => setForm({ ...form, price: e.target.value })}
             />
@@ -479,7 +483,7 @@ export default function AdminProductsPage() {
                       )}
                     </div>
                     <p className="font-semibold text-cyan-400">
-                      ${Number(p.price).toLocaleString()}
+                      {formatNgn(Number(p.price))}
                     </p>
                     <button
                       type="button"
