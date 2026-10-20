@@ -12,6 +12,8 @@ import {
   PackageCheck,
   Clock,
   Trash2,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { formatNgn } from "@/lib/currency";
 
@@ -26,6 +28,7 @@ type Order = {
   id: string;
   orderNumber: string;
   customerEmail: string;
+  customerPhone: string | null;
   shippingName: string;
   shippingAddress: string;
   shippingCity: string;
@@ -80,6 +83,7 @@ export default function AdminOrdersPage() {
   async function updateStatus(orderId: string, status: string) {
     setUpdatingId(orderId);
     setError("");
+    setSuccess("");
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
@@ -89,8 +93,12 @@ export default function AdminOrdersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
+
       setOrders((prev) =>
         prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+      );
+      setSuccess(
+        `Order updated to ${status}. Customer notified by email if configured.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update order");
@@ -186,7 +194,7 @@ export default function AdminOrdersPage() {
             Order management
           </h1>
           <p className="text-sm text-[var(--muted)]">
-            Amounts in NGN (₦) · select orders to clear history
+            Phone &amp; email shown · status changes email the customer
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -291,13 +299,28 @@ export default function AdminOrdersPage() {
                       <p className="text-sm font-medium text-[var(--heading)]">
                         {order.shippingName}
                       </p>
-                      <p className="text-xs text-[var(--muted)]">
-                        {order.customerEmail}
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
+                        <span className="inline-flex items-center gap-1">
+                          <Mail className="h-3 w-3 text-cyan-400" />
+                          {order.customerEmail}
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-medium text-[var(--heading)]">
+                          <Phone className="h-3 w-3 text-cyan-400" />
+                          {order.customerPhone || "No phone on order"}
+                        </span>
                       </p>
                       <p className="mt-1 text-xs text-[var(--muted)]">
                         {order.shippingAddress}, {order.shippingCity}{" "}
                         {order.shippingPostal}
                       </p>
+                      {order.paymentMethod && (
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          Payment: {order.paymentMethod}
+                          {order.paymentReference
+                            ? ` · Ref: ${order.paymentReference}`
+                            : ""}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
@@ -393,7 +416,9 @@ export default function AdminOrdersPage() {
                   )}
 
                   {busy && (
-                    <span className="text-xs text-[var(--muted)]">Updating...</span>
+                    <span className="text-xs text-[var(--muted)]">
+                      Updating &amp; emailing customer...
+                    </span>
                   )}
                 </div>
 

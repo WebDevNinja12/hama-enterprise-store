@@ -5,8 +5,6 @@ export async function sendEmail(opts: {
   text?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
-  // Must use a verified domain. Free tier: onboarding@resend.dev works.
-  // Custom domains (e.g. *.resend.app) must be verified in Resend dashboard first.
   const from =
     process.env.EMAIL_FROM || "HAMA ENTERPRISE NG <onboarding@resend.dev>";
 
@@ -113,4 +111,86 @@ export function stockMaxEmailHtml(productName: string, stock: number) {
     </p>
     <p style="color:#22d3ee;">Current stock: ${stock}</p>
   </div>`;
+}
+
+const STATUS_COPY: Record<
+  string,
+  { title: string; message: string; color: string }
+> = {
+  PENDING: {
+    title: "Order received",
+    message:
+      "We have received your order and are waiting to process it (e.g. bank transfer confirmation).",
+    color: "#f59e0b",
+  },
+  PROCESSING: {
+    title: "Order accepted",
+    message:
+      "Good news — your order has been accepted and is being prepared.",
+    color: "#22d3ee",
+  },
+  SHIPPED: {
+    title: "Order shipped",
+    message:
+      "Your order is on the way. You will be contacted on the phone number you provided for delivery if needed.",
+    color: "#22d3ee",
+  },
+  DELIVERED: {
+    title: "Order delivered",
+    message:
+      "Your order has been marked as delivered. Thank you for shopping with HAMA ENTERPRISE NG.",
+    color: "#34d399",
+  },
+  CANCELLED: {
+    title: "Order cancelled",
+    message:
+      "Your order has been cancelled. If you already paid, contact support for a refund where applicable.",
+    color: "#f87171",
+  },
+};
+
+export function orderStatusEmailHtml(opts: {
+  orderNumber: string;
+  status: string;
+  customerName?: string | null;
+  accountUrl?: string;
+}) {
+  const copy = STATUS_COPY[opts.status] || {
+    title: "Order update",
+    message: `Your order status is now: ${opts.status}.`,
+    color: "#22d3ee",
+  };
+  const name = opts.customerName ? ` ${opts.customerName}` : "";
+  const accountUrl =
+    opts.accountUrl ||
+    "https://hama-enterprise-store.vercel.app/account";
+
+  return `
+  <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0a0e17;color:#e8eef7;border-radius:12px;">
+    <p style="color:#94a3b8;font-size:12px;margin:0 0 8px;">HAMA ENTERPRISE NG</p>
+    <h1 style="color:${copy.color};font-size:20px;margin:0 0 12px;">${copy.title}</h1>
+    <p style="color:#94a3b8;line-height:1.5;">Hello${name},</p>
+    <p style="color:#94a3b8;line-height:1.5;">${copy.message}</p>
+    <p style="margin:16px 0;padding:12px 16px;background:#111827;border-radius:8px;">
+      <span style="color:#94a3b8;font-size:12px;">Order number</span><br/>
+      <strong style="color:#22d3ee;font-family:monospace;font-size:16px;">${opts.orderNumber}</strong>
+    </p>
+    <p style="color:#94a3b8;font-size:13px;">Status: <strong style="color:${copy.color};">${opts.status}</strong></p>
+    <p style="margin:24px 0;">
+      <a href="${accountUrl}" style="background:#22d3ee;color:#0a0e17;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:600;">View my orders</a>
+    </p>
+    <p style="color:#64748b;font-size:12px;">If you have questions, reply to this email or contact support@hamaenterprise.ng</p>
+  </div>`;
+}
+
+export function orderStatusSubject(orderNumber: string, status: string): string {
+  const map: Record<string, string> = {
+    PENDING: "received",
+    PROCESSING: "accepted",
+    SHIPPED: "shipped",
+    DELIVERED: "delivered",
+    CANCELLED: "cancelled",
+  };
+  const word = map[status] || status.toLowerCase();
+  return `Order ${orderNumber} ${word} — HAMA ENTERPRISE NG`;
 }

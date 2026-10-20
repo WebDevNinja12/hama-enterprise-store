@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
 import type { OrderStatus } from "@prisma/client";
+import {
+  sendEmail,
+  orderStatusEmailHtml,
+  orderStatusSubject,
+} from "@/lib/email";
 
 const statusSchema = z.object({
   status: z.enum([
@@ -37,7 +42,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Delivered orders cannot be reopened or changed
     if (existing.status === "DELIVERED") {
       return NextResponse.json(
         {
@@ -48,6 +52,8 @@ export async function PATCH(
       );
     }
 
+    const previousStatus = existing.status;
+
     const order = await prisma.order.update({
       where: { id },
       data: {
@@ -57,6 +63,26 @@ export async function PATCH(
       include: { items: true },
     });
 
+    // Email customer when status actually changes
+    if (status !== previousStatus && order.customerEmail) {
+      const baseUrl =
+        process.env.NEXTAUTH_URL ||
+        process.env.AUTH_URL ||
+        "https://hama-enterprise-store.vercel.app";
+
+      sendEmail({
+        to: order.customerEmail,
+        subject: orderStatusSubject(order.orderNumber, status),
+        html: orderStatusEmailHtml({
+          orderNumber: order.orderNumber,
+          status,
+          customerName: order.shippingName,
+          accountUrl: `${baseUrl}/account`,
+        }),
+        text: `Order ${order.orderNumber} is now ${status}. View orders: ${baseUrl}/account`,
+      }).catch((e) => console.error("[email] order status notify failed:", e));
+    }
+
     return NextResponse.json({
       ok: true,
       order: {
@@ -64,6 +90,8 @@ export async function PATCH(
         orderNumber: order.orderNumber,
         status: order.status,
         notes: order.notes,
+        customerPhone: order.customerPhone,
+        customerEmail: order.customerEmail,
       },
     });
   } catch (err) {
