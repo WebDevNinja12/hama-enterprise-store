@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { z } from "zod";
-import { sendEmail, stockMaxEmailHtml } from "@/lib/email";
+import {
+  sendEmail,
+  stockMaxEmailHtml,
+  orderStatusEmailHtml,
+  orderStatusSubject,
+} from "@/lib/email";
 import { calcShipping, isValidNgPhone } from "@/lib/shipping";
 
 const itemSchema = z.object({
@@ -115,6 +120,8 @@ export async function POST(req: NextRequest) {
     const tax = Number((subtotal * 0.075).toFixed(2));
     const total = Number((subtotal + shipping + tax).toFixed(2));
     const orderNumber = generateOrderNumber();
+    const initialStatus =
+      data.paymentMethod === "bank" ? "PENDING" : "PROCESSING";
 
     const order = await prisma.order.create({
       data: {
@@ -122,7 +129,7 @@ export async function POST(req: NextRequest) {
         userId,
         customerEmail: email,
         customerPhone: data.phone.trim(),
-        status: data.paymentMethod === "bank" ? "PENDING" : "PROCESSING",
+        status: initialStatus,
         subtotal,
         shipping,
         tax,
@@ -166,6 +173,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Confirmation email to customer
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      process.env.AUTH_URL ||
+      "https://hama-enterprise-store.vercel.app";
+
+    sendEmail({
+      to: email,
+      subject: orderStatusSubject(order.orderNumber, initialStatus),
+      html: orderStatusEmailHtml({
+        orderNumber: order.orderNumber,
+        status: initialStatus,
+        customerName: order.shippingName,
+        accountUrl: `${baseUrl}/account`,
+      }),
+      text: `Order ${order.orderNumber} placed. Status: ${initialStatus}. View: ${baseUrl}/account`,
+    }).catch((e) => console.error("[email] order confirmation failed:", e));
+
     return NextResponse.json({
       ok: true,
       order: {
@@ -180,7 +205,10 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
-        { error: err.errors[0]?.message || "Invalid order data", details: err.errors },
+        {
+          error: err.errors[0]?.message || "Invalid order data",
+          details: err.errors,
+        },
         { status: 400 }
       );
     }
