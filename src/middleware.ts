@@ -5,7 +5,7 @@ import {
   SESSION,
   ALLOWED_BOTS,
   BAD_BOTS,
-  PAYSTACK_PATH,
+  OPAY_PATH,
   customerCookieName,
   visitorCookieName,
   COOKIE_BASE,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/session-config";
 import { applyClearAuthCookies } from "@/lib/clear-auth-cookies";
 import { rateLimitIncr } from "@/lib/redis";
+import { applySecurityHeaders } from "@/lib/security-headers";
 
 function clientIp(req: NextRequest): string {
   return (
@@ -42,24 +43,26 @@ export async function middleware(req: NextRequest) {
   const ip = clientIp(req);
 
   if (isAssetOrOptimizer(pathname)) {
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
   }
 
   if (pathname === "/api/clear-cookies" || pathname === "/clear-cookies") {
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
   }
 
-  // Public admin login page — do not require session
   if (pathname === "/admin/login") {
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
   }
 
-  if (PAYSTACK_PATH.test(pathname)) {
-    return NextResponse.next();
+  // OPay webhooks must reach the server without auth cookies
+  if (OPAY_PATH.test(pathname)) {
+    return applySecurityHeaders(NextResponse.next());
   }
 
   if (ua && BAD_BOTS.test(ua) && !ALLOWED_BOTS.test(ua)) {
-    return NextResponse.json({ error: "Forbidden", code: 403 }, { status: 403 });
+    return applySecurityHeaders(
+      NextResponse.json({ error: "Forbidden", code: 403 }, { status: 403 })
+    );
   }
 
   const isAllowedBot = ALLOWED_BOTS.test(ua);
@@ -72,12 +75,14 @@ export async function middleware(req: NextRequest) {
       60
     );
     if (!ok) {
-      return NextResponse.json(
-        {
-          error: "Too many requests. Please wait a moment and try again.",
-          code: 429,
-        },
-        { status: 429, headers: { "Retry-After": "60" } }
+      return applySecurityHeaders(
+        NextResponse.json(
+          {
+            error: "Too many requests. Please wait a moment and try again.",
+            code: 429,
+          },
+          { status: 429, headers: { "Retry-After": "60" } }
+        )
       );
     }
   }
@@ -85,7 +90,7 @@ export async function middleware(req: NextRequest) {
   const cookieHeader = req.headers.get("cookie") || "";
   if (cookieHeader.length > 2800) {
     const res = NextResponse.redirect(new URL("/error?code=494", req.url));
-    return applyClearAuthCookies(res);
+    return applySecurityHeaders(applyClearAuthCookies(res));
   }
 
   const res = NextResponse.next();
@@ -116,14 +121,18 @@ export async function middleware(req: NextRequest) {
 
     if (!token?.sub) {
       if (pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "Unauthorized", code: 401 }, { status: 401 });
+        return applySecurityHeaders(
+          NextResponse.json({ error: "Unauthorized", code: 401 }, { status: 401 })
+        );
       }
       if (isAdminPath) {
-        return NextResponse.redirect(new URL("/admin/login", req.url));
+        return applySecurityHeaders(
+          NextResponse.redirect(new URL("/admin/login", req.url))
+        );
       }
       const login = new URL("/login", req.url);
       login.searchParams.set("callbackUrl", pathname);
-      return NextResponse.redirect(login);
+      return applySecurityHeaders(NextResponse.redirect(login));
     }
 
     const role = (token.role as string) || "USER";
@@ -135,35 +144,31 @@ export async function middleware(req: NextRequest) {
         : SESSION.CUSTOMER_IDLE_MS / 1000;
 
     if (now - lastActive > idleLimit) {
-      const loginPath = isAdminPath ? "/admin/login?reason=idle" : "/login?reason=idle";
+      const loginPath = isAdminPath
+        ? "/admin/login?reason=idle"
+        : "/login?reason=idle";
       const out = pathname.startsWith("/api/")
         ? NextResponse.json(
             { error: "Session expired due to inactivity", code: 401 },
             { status: 401 }
           )
         : NextResponse.redirect(new URL(loginPath, req.url));
-      return applyClearAuthCookies(out);
+      return applySecurityHeaders(applyClearAuthCookies(out));
     }
 
     if (isAdminPath && role !== "ADMIN") {
       if (pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "Forbidden", code: 403 }, { status: 403 });
+        return applySecurityHeaders(
+          NextResponse.json({ error: "Forbidden", code: 403 }, { status: 403 })
+        );
       }
-      return NextResponse.redirect(new URL("/account", req.url));
+      return applySecurityHeaders(
+        NextResponse.redirect(new URL("/account", req.url))
+      );
     }
   }
 
-  res.headers.set("X-Content-Type-Options", "nosniff");
-  res.headers.set("X-Frame-Options", "DENY");
-  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  if (isProduction()) {
-    res.headers.set(
-      "Strict-Transport-Security",
-      "max-age=31536000; includeSubDomains"
-    );
-  }
-
-  return res;
+  return applySecurityHeaders(res);
 }
 
 export const config = {

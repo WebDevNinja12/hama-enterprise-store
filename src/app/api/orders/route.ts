@@ -10,28 +10,30 @@ import {
 } from "@/lib/email";
 import { calcShipping, isValidNgPhone } from "@/lib/shipping";
 
+/** Client may send ids only — prices come from the database (anti-tamper). */
 const itemSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+  id: z.string().min(1),
   slug: z.string().optional(),
-  price: z.number().positive(),
   quantity: z.number().int().min(1).max(99),
+  // Ignore client price if present — never trust it
+  name: z.string().optional(),
+  price: z.number().optional(),
 });
 
 const orderSchema = z.object({
-  items: z.array(itemSchema).min(1),
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().min(10, "Phone number is required"),
-  address: z.string().min(1),
-  city: z.string().min(1),
-  state: z.string().min(1),
-  postal: z.string().min(1),
-  country: z.string().default("NG"),
-  paymentMethod: z.enum(["card", "bank", "crypto"]),
-  paymentReference: z.string().optional(),
-  notes: z.string().optional(),
+  items: z.array(itemSchema).min(1).max(50),
+  firstName: z.string().min(1).max(80),
+  lastName: z.string().min(1).max(80),
+  email: z.string().email().max(200),
+  phone: z.string().min(10, "Phone number is required").max(20),
+  address: z.string().min(1).max(300),
+  city: z.string().min(1).max(100),
+  state: z.string().min(1).max(100),
+  postal: z.string().min(1).max(20),
+  country: z.string().default("NG").max(5),
+  paymentMethod: z.enum(["card", "bank", "crypto", "opay"]),
+  paymentReference: z.string().max(120).optional(),
+  notes: z.string().max(500).optional(),
 });
 
 function generateOrderNumber() {
@@ -93,13 +95,46 @@ export async function POST(req: NextRequest) {
     const userId = session.user.id;
     const email = (session.user.email || data.email).toLowerCase().trim();
 
+    // Resolve every line from DB — never trust client price/name
+    type Line = {
+      productId: string;
+      productName: string;
+      productSlug: string;
+      quantity: number;
+      unitPrice: number;
+      stock: number;
+    };
+    const lines: Line[] = [];
+
     for (const item of data.items) {
       const dbProduct = await prisma.storeProduct.findFirst({
         where: {
-          OR: [{ id: item.id }, ...(item.slug ? [{ slug: item.slug }] : [])],
+          OR: [
+            { id: item.id },
+            ...(item.slug ? [{ slug: item.slug }] : []),
+          ],
+          published: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          price: true,
+          stock: true,
         },
       });
-      if (dbProduct && dbProduct.stock < item.quantity) {
+
+      if (!dbProduct) {
+        return NextResponse.json(
+          {
+            error: `Product not found or unavailable (${item.slug || item.id}).`,
+            code: "PRODUCT_MISSING",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (dbProduct.stock < item.quantity) {
         return NextResponse.json(
           {
             error: `"${dbProduct.name}" has only ${dbProduct.stock} left (max reached).`,
@@ -110,10 +145,27 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+
+      const unitPrice = Number(dbProduct.price);
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        return NextResponse.json(
+          { error: `Invalid price for "${dbProduct.name}". Contact support.` },
+          { status: 400 }
+        );
+      }
+
+      lines.push({
+        productId: dbProduct.id,
+        productName: dbProduct.name,
+        productSlug: dbProduct.slug,
+        quantity: item.quantity,
+        unitPrice,
+        stock: dbProduct.stock,
+      });
     }
 
-    const subtotal = data.items.reduce(
-      (sum, i) => sum + i.price * i.quantity,
+    const subtotal = lines.reduce(
+      (sum, l) => sum + l.unitPrice * l.quantity,
       0
     );
     const { shipping } = calcShipping(subtotal, data.state);
@@ -121,7 +173,9 @@ export async function POST(req: NextRequest) {
     const total = Number((subtotal + shipping + tax).toFixed(2));
     const orderNumber = generateOrderNumber();
     const initialStatus =
-      data.paymentMethod === "bank" ? "PENDING" : "PROCESSING";
+      data.paymentMethod === "bank" || data.paymentMethod === "opay"
+        ? "PENDING"
+        : "PROCESSING";
 
     const order = await prisma.order.create({
       data: {
@@ -143,37 +197,28 @@ export async function POST(req: NextRequest) {
         paymentReference: data.paymentReference || null,
         notes: data.notes || null,
         items: {
-          create: data.items.map((item) => ({
-            productName: item.name,
-            productSlug: item.slug || null,
-            quantity: item.quantity,
-            price: item.price,
+          create: lines.map((l) => ({
+            productName: l.productName,
+            productSlug: l.productSlug,
+            quantity: l.quantity,
+            price: l.unitPrice,
           })),
         },
       },
       include: { items: true },
     });
 
-    for (const item of data.items) {
-      const dbProduct = await prisma.storeProduct.findFirst({
-        where: {
-          OR: [{ id: item.id }, ...(item.slug ? [{ slug: item.slug }] : [])],
-        },
-      });
-      if (!dbProduct) continue;
-
-      const nextStock = Math.max(0, dbProduct.stock - item.quantity);
+    for (const l of lines) {
+      const nextStock = Math.max(0, l.stock - l.quantity);
       await prisma.storeProduct.update({
-        where: { id: dbProduct.id },
+        where: { id: l.productId },
         data: { stock: nextStock },
       });
-
       if (nextStock <= 0) {
-        await notifyAdminsStock(dbProduct.name, nextStock);
+        await notifyAdminsStock(l.productName, nextStock);
       }
     }
 
-    // Confirmation email to customer
     const baseUrl =
       process.env.NEXTAUTH_URL ||
       process.env.AUTH_URL ||

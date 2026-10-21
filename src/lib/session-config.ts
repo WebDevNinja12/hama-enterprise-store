@@ -39,6 +39,10 @@ export const ALLOWED_BOTS =
 export const BAD_BOTS =
   /scrapy|curl\/|wget|python-requests|libwww|httpclient|java\/|go-http|php\/|nikto|sqlmap|nmap|masscan|zgrab/i;
 
+/** OPay webhook + callback paths (not rate-limited as harshly as public APIs) */
+export const OPAY_PATH = /^\/api\/(webhooks?\/)?opay/i;
+
+/** @deprecated Paystack removed — kept only so old matchers do not break */
 export const PAYSTACK_PATH = /^\/api\/(webhooks?\/)?paystack/i;
 
 export function isProduction() {
