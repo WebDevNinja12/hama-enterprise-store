@@ -1,8 +1,15 @@
 # HAMA ENTERPRISE NG — E-Commerce Store
 
-Official store for **HAMA ENTERPRISE NG** (RC: 8827959).
+Official store for **HAMA ENTERPRISE NG**.
 
-Dark cyberpunk UI · Next.js 15 · Prisma · NextAuth · Stripe-ready
+Next.js · Prisma · NextAuth · OPay-ready · Vercel
+
+## Security notice
+
+- **Never commit** `.env` or real API keys, database passwords, or tokens.
+- Only `.env.example` (empty placeholders) belongs in Git.
+- Put real secrets only in **Vercel → Settings → Environment Variables**.
+- If a secret was ever shared in chat or a screenshot, **rotate it** (create a new key and revoke the old one).
 
 ## Local development
 
@@ -10,40 +17,29 @@ Dark cyberpunk UI · Next.js 15 · Prisma · NextAuth · Stripe-ready
 git clone https://github.com/WebDevNinja12/hama-enterprise-store.git
 cd hama-enterprise-store
 npm install
-
-# Create env file
 cp .env.example .env
-# Edit .env — set DATABASE_URL and AUTH_SECRET / NEXTAUTH_SECRET
-
+# Edit .env with YOUR values only on your machine
 npx prisma db push
 npm run dev
 ```
-
-Open http://localhost:3000
 
 ## Required environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | Postgres connection string |
-| `AUTH_SECRET` or `NEXTAUTH_SECRET` | Yes | Random secret for sessions |
+| `AUTH_SECRET` / `NEXTAUTH_SECRET` | Yes | Random session secret |
 | `NEXTAUTH_URL` | Yes in prod | Full site URL |
-| `GOOGLE_CLIENT_ID` / `SECRET` | Optional | Google login |
-| `STRIPE_*` | Optional | Payments |
+| `RESEND_API_KEY` | For email | OTP, order updates |
+| `BLOB_READ_WRITE_TOKEN` | For uploads | Vercel Blob |
+| `OPAY_*` | For OPay pay | Merchant ID, public + secret keys |
+| `GOOGLE_CLIENT_*` | Optional | Google login |
 
 ## Deploy on Vercel
 
-1. Import this GitHub repo in Vercel
-2. Add **Vercel Postgres** (Storage → Create → Postgres)
-3. Copy `DATABASE_URL` into Environment Variables
-4. Add `AUTH_SECRET` and `NEXTAUTH_SECRET` (same value from `openssl rand -base64 32`)
-5. Set `NEXTAUTH_URL` to your Vercel domain
-6. Deploy
-
-After first deploy, run in Vercel → Storage → Postgres, or locally:
-
-```bash
-npx prisma db push
-```
+1. Import this GitHub repo
+2. Add environment variables (never in the repo)
+3. Deploy
+4. Run schema push if needed (`npx prisma db push` against production DB)
 
 © HAMA ENTERPRISE NG

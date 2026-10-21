@@ -21,6 +21,9 @@
 # misc
 .DS_Store
 *.pem
+*.p12
+*.key
+*.cert
 
 # debug
 npm-debug.log*
@@ -28,9 +31,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# env files — NEVER commit real secrets
 .env
-.env*.local
+.env.*
+!.env.example
+*.local
 
 # vercel
 .vercel
@@ -39,5 +44,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# prisma
+# prisma local dbs
 /prisma/*.db
+/prisma/*.db-journal
+
+# secrets / dumps
+secrets/
+*.secret
+credentials.json
+service-account*.json
