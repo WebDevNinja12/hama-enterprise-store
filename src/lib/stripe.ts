@@ -1,9 +1,4 @@
-/**
- * Stripe removed — HAMA uses OPay + bank transfer.
- * Stub kept so any leftover imports do not break the build.
- */
-export function getStripe(): never {
-  throw new Error("Stripe is not configured. Use OPay or bank transfer.");
+/** Stripe not used — OPay + bank transfer only. */
+export function getStripe(): null {
+  return null;
 }
-
-export const stripe = null;
