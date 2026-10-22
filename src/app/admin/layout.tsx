@@ -12,7 +12,6 @@ export default function AdminLayout({
   const isLogin =
     pathname === "/admin/login" || pathname?.startsWith("/admin/login/");
 
-  // Login page must not go through AdminGuard redirect logic
   if (isLogin) {
     return <>{children}</>;
   }

@@ -3,11 +3,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
-/**
- * Emergency admin password set.
- * Requires ADMIN_BOOTSTRAP_SECRET on Vercel.
- * Remove the env var after you log in successfully.
- */
 const bodySchema = z.object({
   secret: z.string().min(8),
   email: z.string().email(),
@@ -18,30 +13,21 @@ export async function POST(req: NextRequest) {
   const bootstrap = process.env.ADMIN_BOOTSTRAP_SECRET;
   if (!bootstrap) {
     return NextResponse.json(
-      {
-        error:
-          "Bootstrap disabled. Set ADMIN_BOOTSTRAP_SECRET on Vercel to enable.",
-      },
+      { error: "Bootstrap disabled. Set ADMIN_BOOTSTRAP_SECRET on Vercel." },
       { status: 403 }
     );
   }
-
   try {
-    const json = await req.json();
-    const data = bodySchema.parse(json);
-
+    const data = bodySchema.parse(await req.json());
     if (data.secret !== bootstrap) {
       return NextResponse.json({ error: "Invalid secret" }, { status: 401 });
     }
-
     const email = data.email.toLowerCase().trim();
     const hash = await bcrypt.hash(data.password, 12);
-
     const existing = await prisma.user.findUnique({
       where: { email },
       select: { id: true },
     });
-
     if (existing) {
       await prisma.user.update({
         where: { id: existing.id },
@@ -63,17 +49,16 @@ export async function POST(req: NextRequest) {
         },
       });
     }
-
     return NextResponse.json({
       ok: true,
       message:
-        "Admin password updated. Sign in at /admin/login, then DELETE ADMIN_BOOTSTRAP_SECRET from Vercel.",
+        "Admin ready. Login at /admin/login then remove ADMIN_BOOTSTRAP_SECRET.",
       email,
     });
   } catch (e) {
     if (e instanceof z.ZodError) {
       return NextResponse.json(
-        { error: e.errors[0]?.message || "Invalid body" },
+        { error: e.errors[0]?.message || "Invalid" },
         { status: 400 }
       );
     }
@@ -88,7 +73,5 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     enabled: Boolean(process.env.ADMIN_BOOTSTRAP_SECRET),
-    usage:
-      'POST { "secret", "email", "password" } then remove ADMIN_BOOTSTRAP_SECRET',
   });
 }
