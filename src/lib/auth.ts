@@ -52,23 +52,30 @@ const providers: Provider[] = [
         throw new Error("LOGIN_LOCKED");
       }
 
-      const user = await prisma.user.findUnique({
-        where: { email },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          password: true,
-          role: true,
-          emailVerified: true,
-        },
-      });
+      let user;
+      try {
+        user = await prisma.user.findUnique({
+          where: { email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            password: true,
+            role: true,
+            emailVerified: true,
+          },
+        });
+      } catch (e) {
+        console.error("[auth] DB error:", e);
+        throw new Error("DB_UNAVAILABLE");
+      }
 
       if (!user || !user.password) {
         await recordLoginFailure(limitKey);
         return null;
       }
 
+      // Admins always allowed; customers need verified email
       if (!user.emailVerified && user.role !== "ADMIN") {
         await recordLoginFailure(limitKey);
         throw new Error("EMAIL_NOT_VERIFIED");
@@ -178,7 +185,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         let role: Role = (user as { role?: Role }).role ?? "USER";
         let sub = user.id;
 
-        // Google: resolve DB user id + role (never put picture in JWT)
         if (account?.provider === "google" && user.email) {
           try {
             const dbUser = await prisma.user.findUnique({

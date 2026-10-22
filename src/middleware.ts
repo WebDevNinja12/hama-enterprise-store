@@ -9,11 +9,28 @@ import {
   customerCookieName,
   visitorCookieName,
   COOKIE_BASE,
-  isProduction,
 } from "@/lib/session-config";
 import { applyClearAuthCookies } from "@/lib/clear-auth-cookies";
-import { rateLimitIncr } from "@/lib/redis";
 import { applySecurityHeaders } from "@/lib/security-headers";
+
+/** Lightweight in-memory rate limit for Edge (no Redis import — keeps middleware small). */
+const hits = new Map<string, { n: number; reset: number }>();
+
+function edgeRateOk(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const row = hits.get(key);
+  if (!row || now > row.reset) {
+    hits.set(key, { n: 1, reset: now + windowMs });
+    return true;
+  }
+  row.n += 1;
+  if (hits.size > 4000) {
+    for (const [k, v] of hits) {
+      if (v.reset < now) hits.delete(k);
+    }
+  }
+  return row.n <= limit;
+}
 
 function clientIp(req: NextRequest): string {
   return (
@@ -46,15 +63,23 @@ export async function middleware(req: NextRequest) {
     return applySecurityHeaders(NextResponse.next());
   }
 
-  if (pathname === "/api/clear-cookies" || pathname === "/clear-cookies") {
+  // Public auth/bootstrap paths — never force login redirect
+  if (
+    pathname === "/api/clear-cookies" ||
+    pathname === "/clear-cookies" ||
+    pathname === "/admin/login" ||
+    pathname.startsWith("/admin/login/") ||
+    pathname === "/api/admin/bootstrap" ||
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password" ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/register")
+  ) {
     return applySecurityHeaders(NextResponse.next());
   }
 
-  if (pathname === "/admin/login") {
-    return applySecurityHeaders(NextResponse.next());
-  }
-
-  // OPay webhooks must reach the server without auth cookies
   if (OPAY_PATH.test(pathname)) {
     return applySecurityHeaders(NextResponse.next());
   }
@@ -66,15 +91,9 @@ export async function middleware(req: NextRequest) {
   }
 
   const isAllowedBot = ALLOWED_BOTS.test(ua);
-
   if (!isAllowedBot) {
     const isApi = pathname.startsWith("/api/");
-    const { ok } = await rateLimitIncr(
-      `rl:${ip}:${isApi ? "api" : "web"}`,
-      isApi ? 60 : 120,
-      60
-    );
-    if (!ok) {
+    if (!edgeRateOk(`rl:${ip}:${isApi ? "api" : "web"}`, isApi ? 80 : 150, 60_000)) {
       return applySecurityHeaders(
         NextResponse.json(
           {
@@ -104,7 +123,9 @@ export async function middleware(req: NextRequest) {
   }
 
   const isAdminPath =
-    (pathname.startsWith("/admin") && pathname !== "/admin/login") ||
+    (pathname.startsWith("/admin") &&
+      pathname !== "/admin/login" &&
+      !pathname.startsWith("/admin/login/")) ||
     pathname.startsWith("/api/admin");
   const isAccountPath =
     pathname.startsWith("/account") ||
