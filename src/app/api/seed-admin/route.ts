@@ -3,9 +3,11 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
 /**
- * One-time bootstrap: create default admin if missing.
+ * Bootstrap / repair admin account.
  * POST /api/seed-admin
- * Safe to call multiple times — will not overwrite existing admin password.
+ * - Creates admin@hamaenterprise.ng if missing
+ * - Ensures role=ADMIN and emailVerified set
+ * - Does NOT reset password if admin already exists (use /api/admin/bootstrap for that)
  */
 export async function POST() {
   try {
@@ -13,16 +15,16 @@ export async function POST() {
     const existing = await prisma.user.findUnique({ where: { email } });
 
     if (existing) {
-      // Ensure role is ADMIN
-      if (existing.role !== "ADMIN") {
-        await prisma.user.update({
-          where: { email },
-          data: { role: "ADMIN" },
-        });
-      }
+      await prisma.user.update({
+        where: { email },
+        data: {
+          role: "ADMIN",
+          emailVerified: existing.emailVerified ?? new Date(),
+        },
+      });
       return NextResponse.json({
         ok: true,
-        message: "Admin already exists",
+        message: "Admin already exists (role + verified ensured)",
         email,
         created: false,
       });
@@ -37,12 +39,13 @@ export async function POST() {
         name: "HAMA Admin",
         password: hashed,
         role: "ADMIN",
+        emailVerified: new Date(),
       },
     });
 
     return NextResponse.json({
       ok: true,
-      message: "Admin account created",
+      message: "Admin account created. Change password after first login.",
       email,
       password,
       created: true,
@@ -50,8 +53,14 @@ export async function POST() {
   } catch (err) {
     console.error("Seed admin error:", err);
     return NextResponse.json(
-      { error: "Failed to seed admin" },
+      { error: "Failed to seed admin", detail: String(err) },
       { status: 500 }
     );
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    usage: "POST /api/seed-admin to create default admin if missing",
+  });
 }

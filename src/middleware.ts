@@ -1,22 +1,26 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
+import {
+  SESSION,
+  ALLOWED_BOTS,
+  BAD_BOTS,
+  OPAY_PATH,
+  PAYSTACK_PATH,
+  customerCookieName,
+  visitorCookieName,
+  COOKIE_BASE,
+  isProduction,
+} from "@/lib/session-config";
+import { applyClearAuthCookies } from "@/lib/clear-auth-cookies";
+import { rateLimitIncr } from "@/lib/redis";
 
-/**
- * Edge-safe middleware only (no next-auth, no Node APIs).
- * Auth for /admin and /account is enforced in AdminGuard + API routes.
- */
-
-const ALLOWED_BOTS =
-  /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|applebot|facebookexternalhit|twitterbot|linkedinbot|pinterest|redditbot/i;
-const BAD_BOTS =
-  /scrapy|curl\/|wget|python-requests|libwww|httpclient|java\/|go-http|php\/|nikto|sqlmap|nmap|masscan|zgrab/i;
-
-function isProd() {
-  return process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
-}
-
-function visitorCookieName() {
-  return isProd() ? "__Secure-hama.visitor" : "hama.visitor";
+function clientIp(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
 }
 
 function randomId(): string {
@@ -25,62 +29,157 @@ function randomId(): string {
   return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function clearAuthCookies(res: NextResponse) {
-  const names = [
-    "__Secure-hama.customer",
-    "hama.customer",
-    "__Secure-hama.admin",
-    "hama.admin",
-    "__Secure-hama.visitor",
-    "hama.visitor",
-    "__Host-hama.csrf",
-    "hama.csrf",
-    "next-auth.session-token",
-    "__Secure-next-auth.session-token",
-    "authjs.session-token",
-    "__Secure-authjs.session-token",
-  ];
-  for (const name of names) {
-    res.cookies.set(name, "", {
-      path: "/",
-      maxAge: 0,
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isProd(),
-    });
-  }
-  return res;
+function isAssetOrOptimizer(pathname: string): boolean {
+  if (pathname.startsWith("/_next/image")) return true;
+  if (pathname.startsWith("/_next/static")) return true;
+  if (pathname === "/favicon.ico" || pathname === "/logo.png") return true;
+  if (/\.(avif|webp|png|jpe?g|gif|svg|ico|woff2?)$/i.test(pathname)) return true;
+  return false;
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const ua = req.headers.get("user-agent") || "";
+  const ip = clientIp(req);
+
+  if (isAssetOrOptimizer(pathname)) {
+    return NextResponse.next();
+  }
+
+  if (
+    pathname === "/api/clear-cookies" ||
+    pathname === "/clear-cookies" ||
+    pathname === "/api/admin/bootstrap" ||
+    pathname === "/api/seed-admin" ||
+    pathname === "/api/health"
+  ) {
+    return NextResponse.next();
+  }
+
+  // Public admin login — never require session here
+  if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
+    return NextResponse.next();
+  }
+
+  if (OPAY_PATH.test(pathname) || PAYSTACK_PATH.test(pathname)) {
+    return NextResponse.next();
+  }
 
   if (ua && BAD_BOTS.test(ua) && !ALLOWED_BOTS.test(ua)) {
     return NextResponse.json({ error: "Forbidden", code: 403 }, { status: 403 });
   }
 
+  const isAllowedBot = ALLOWED_BOTS.test(ua);
+
+  if (!isAllowedBot) {
+    const isApi = pathname.startsWith("/api/");
+    const { ok } = await rateLimitIncr(
+      `rl:${ip}:${isApi ? "api" : "web"}`,
+      isApi ? 60 : 120,
+      60
+    );
+    if (!ok) {
+      return NextResponse.json(
+        {
+          error: "Too many requests. Please wait a moment and try again.",
+          code: 429,
+        },
+        { status: 429, headers: { "Retry-After": "60" } }
+      );
+    }
+  }
+
   const cookieHeader = req.headers.get("cookie") || "";
   if (cookieHeader.length > 2800) {
     const res = NextResponse.redirect(new URL("/error?code=494", req.url));
-    return clearAuthCookies(res);
-  }
-
-  // Always allow admin login page through (no auth redirect here)
-  if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
-    return NextResponse.next();
+    return applyClearAuthCookies(res);
   }
 
   const res = NextResponse.next();
+
   const vName = visitorCookieName();
   if (!req.cookies.get(vName)?.value) {
     res.cookies.set(vName, randomId(), {
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isProd(),
-      maxAge: 60 * 60,
+      ...COOKIE_BASE,
+      maxAge: SESSION.VISITOR_MAX_AGE_SEC,
     });
+  }
+
+  const isAdminPath =
+    (pathname.startsWith("/admin") &&
+      pathname !== "/admin/login" &&
+      !pathname.startsWith("/admin/login/")) ||
+    (pathname.startsWith("/api/admin") &&
+      pathname !== "/api/admin/bootstrap");
+
+  const isAccountPath =
+    pathname.startsWith("/account") ||
+    pathname.startsWith("/checkout") ||
+    pathname.startsWith("/api/orders") ||
+    pathname.startsWith("/api/account");
+
+  if (isAdminPath || isAccountPath) {
+    const token = await getToken({
+      req,
+      secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+      cookieName: customerCookieName(),
+    });
+
+    if (!token?.sub) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Unauthorized", code: 401 },
+          { status: 401 }
+        );
+      }
+      if (isAdminPath) {
+        return NextResponse.redirect(new URL("/admin/login", req.url));
+      }
+      const login = new URL("/login", req.url);
+      login.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(login);
+    }
+
+    const role = (token.role as string) || "USER";
+    const now = Math.floor(Date.now() / 1000);
+    const lastActive = typeof token.la === "number" ? token.la : now;
+    const idleLimit =
+      role === "ADMIN"
+        ? SESSION.ADMIN_IDLE_MS / 1000
+        : SESSION.CUSTOMER_IDLE_MS / 1000;
+
+    if (now - lastActive > idleLimit) {
+      const loginPath = isAdminPath
+        ? "/admin/login?reason=idle"
+        : "/login?reason=idle";
+      const out = pathname.startsWith("/api/")
+        ? NextResponse.json(
+            { error: "Session expired due to inactivity", code: 401 },
+            { status: 401 }
+          )
+        : NextResponse.redirect(new URL(loginPath, req.url));
+      return applyClearAuthCookies(out);
+    }
+
+    if (isAdminPath && role !== "ADMIN") {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Forbidden", code: 403 },
+          { status: 403 }
+        );
+      }
+      return NextResponse.redirect(new URL("/account", req.url));
+    }
+  }
+
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (isProduction()) {
+    res.headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains"
+    );
   }
 
   return res;

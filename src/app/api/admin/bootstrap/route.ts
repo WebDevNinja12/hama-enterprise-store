@@ -4,12 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 /**
- * One-time / emergency admin password set.
+ * Emergency admin password set.
  * Requires ADMIN_BOOTSTRAP_SECRET on Vercel.
- * Disable by removing the env var after use.
- *
- * POST /api/admin/bootstrap
- * Body: { "secret": "...", "email": "admin@...", "password": "new-password" }
+ * Remove the env var after you log in successfully.
  */
 const bodySchema = z.object({
   secret: z.string().min(8),
@@ -21,7 +18,10 @@ export async function POST(req: NextRequest) {
   const bootstrap = process.env.ADMIN_BOOTSTRAP_SECRET;
   if (!bootstrap) {
     return NextResponse.json(
-      { error: "Bootstrap disabled. Set ADMIN_BOOTSTRAP_SECRET on Vercel to enable." },
+      {
+        error:
+          "Bootstrap disabled. Set ADMIN_BOOTSTRAP_SECRET on Vercel to enable.",
+      },
       { status: 403 }
     );
   }
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     const existing = await prisma.user.findUnique({
       where: { email },
-      select: { id: true, role: true },
+      select: { id: true },
     });
 
     if (existing) {
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       message:
-        "Admin password updated. Sign in at /admin/login, then REMOVE ADMIN_BOOTSTRAP_SECRET from Vercel.",
+        "Admin password updated. Sign in at /admin/login, then DELETE ADMIN_BOOTSTRAP_SECRET from Vercel.",
       email,
     });
   } catch (e) {
@@ -89,6 +89,6 @@ export async function GET() {
   return NextResponse.json({
     enabled: Boolean(process.env.ADMIN_BOOTSTRAP_SECRET),
     usage:
-      'POST { "secret", "email", "password" } — then remove ADMIN_BOOTSTRAP_SECRET',
+      'POST { "secret", "email", "password" } then remove ADMIN_BOOTSTRAP_SECRET',
   });
 }

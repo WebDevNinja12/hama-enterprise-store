@@ -1,25 +1,9 @@
-import Stripe from "stripe";
-
-let _stripe: Stripe | null = null;
-
-export function getStripe() {
-  if (!_stripe) {
-    const key = process.env.STRIPE_SECRET_KEY;
-    if (!key) {
-      throw new Error("STRIPE_SECRET_KEY is not set");
-    }
-    _stripe = new Stripe(key, {
-      typescript: true,
-    });
-  }
-  return _stripe;
+/**
+ * Stripe removed — HAMA uses OPay + bank transfer.
+ * Stub kept so any leftover imports do not break the build.
+ */
+export function getStripe(): never {
+  throw new Error("Stripe is not configured. Use OPay or bank transfer.");
 }
 
-// Lazy proxy so build does not crash when key is missing
-export const stripe = new Proxy({} as Stripe, {
-  get(_target, prop, receiver) {
-    const client = getStripe();
-    const value = Reflect.get(client, prop, receiver);
-    return typeof value === "function" ? value.bind(client) : value;
-  },
-});
+export const stripe = null;
