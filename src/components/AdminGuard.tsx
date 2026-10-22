@@ -1,22 +1,32 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 /**
+ * Protects /admin/* except /admin/login.
  * Once admin access is confirmed, keep rendering children even if
- * useSession briefly flips to "loading" during update()/refetch.
- * That was unmounting the product form and showing "Checking access...".
+ * useSession briefly flips to "loading" (avoids form unmount).
  */
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const allowedRef = useRef(false);
   const [ready, setReady] = useState(false);
 
+  const isLoginPage =
+    pathname === "/admin/login" || pathname?.startsWith("/admin/login/");
+
   useEffect(() => {
+    // Login page must never redirect away — otherwise admin cannot sign in
+    if (isLoginPage) {
+      setReady(true);
+      return;
+    }
+
     if (status === "authenticated" && session?.user?.role === "ADMIN") {
       allowedRef.current = true;
       setReady(true);
@@ -26,7 +36,7 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
     if (status === "unauthenticated") {
       allowedRef.current = false;
       setReady(true);
-      router.replace("/login?callbackUrl=/admin");
+      router.replace("/admin/login");
       return;
     }
 
@@ -34,9 +44,12 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
       allowedRef.current = false;
       setReady(true);
     }
-  }, [status, session, router]);
+  }, [status, session, router, isLoginPage]);
 
-  // Initial load only
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
   if (!ready && status === "loading" && !allowedRef.current) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center text-[var(--muted)]">
@@ -52,7 +65,7 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
   if (status === "unauthenticated") {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-[var(--muted)]">
-        Redirecting to login…
+        Redirecting to admin login…
       </div>
     );
   }

@@ -29,18 +29,20 @@ function LoginForm() {
     });
 
     if (res?.error) {
-      if (res.error === "LOGIN_LOCKED" || String(res.error).includes("LOCKED")) {
+      const err = String(res.error);
+      if (err === "LOGIN_LOCKED" || err.includes("LOCKED")) {
         setError("Too many failed attempts. Wait 5 minutes and try again.");
-      } else {
+      } else if (err.includes("EMAIL_NOT_VERIFIED") || err === "EMAIL_NOT_VERIFIED") {
         setError(
-          "Invalid email/password, or email not verified. Check your inbox for the OTP."
+          "Email not verified yet. Check your inbox for the OTP, or contact support."
         );
+      } else {
+        setError("Invalid email or password. Check and try again.");
       }
       setLoading(false);
       return;
     }
 
-    // Admins must use the separate admin login
     try {
       const me = await fetch("/api/auth/session", { credentials: "include" });
       const data = await me.json();
@@ -74,12 +76,12 @@ function LoginForm() {
         Customer sign in — checkout and orders
       </p>
       {reason === "idle" && (
-        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-200">
           Your session expired due to inactivity. Please sign in again.
         </div>
       )}
       {callbackUrl.includes("checkout") && (
-        <div className="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-300">
+        <div className="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-800 dark:text-cyan-300">
           You need an account to checkout. Sign in or{" "}
           <Link
             href={`/register?callbackUrl=${encodeURIComponent(callbackUrl)}`}
@@ -91,7 +93,7 @@ function LoginForm() {
         </div>
       )}
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
           {error}
         </div>
       )}
@@ -146,7 +148,7 @@ function LoginForm() {
             <label className="text-xs text-[var(--muted)]">Password</label>
             <Link
               href="/forgot-password"
-              className="text-xs text-cyan-400 hover:underline"
+              className="text-xs text-cyan-600 hover:underline dark:text-cyan-400"
             >
               Forgot password?
             </Link>
@@ -170,9 +172,15 @@ function LoginForm() {
         Don&apos;t have an account?{" "}
         <Link
           href={`/register?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-          className="font-medium text-cyan-400 hover:underline"
+          className="font-medium text-cyan-600 hover:underline dark:text-cyan-400"
         >
           Create one
+        </Link>
+      </p>
+      <p className="mt-3 text-center text-xs text-[var(--muted)]">
+        Staff?{" "}
+        <Link href="/admin/login" className="text-cyan-600 hover:underline dark:text-cyan-400">
+          Admin sign in
         </Link>
       </p>
     </div>
