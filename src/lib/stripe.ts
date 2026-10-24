@@ -1,4 +1,25 @@
-/** Stripe not used — OPay + bank transfer only. */
-export function getStripe(): null {
-  return null;
+import Stripe from "stripe";
+
+let _stripe: Stripe | null = null;
+
+export function getStripe() {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error("STRIPE_SECRET_KEY is not set");
+    }
+    _stripe = new Stripe(key, {
+      typescript: true,
+    });
+  }
+  return _stripe;
 }
+
+// Lazy proxy so build does not crash when key is missing
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, prop, receiver) {
+    const client = getStripe();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
