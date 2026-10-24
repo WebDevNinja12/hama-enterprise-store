@@ -30,7 +30,8 @@ const orderSchema = z.object({
   city: z.string().min(1).max(100),
   state: z.string().min(1).max(100),
   postal: z.string().min(1).max(20),
-  country: z.string().default("NG").max(5),
+  // .max() must come BEFORE .default() or Zod throws at build time
+  country: z.string().max(5).default("NG"),
   paymentMethod: z.enum(["card", "bank", "crypto", "opay"]),
   paymentReference: z.string().max(120).optional(),
   notes: z.string().max(500).optional(),
@@ -87,110 +88,94 @@ export async function POST(req: NextRequest) {
 
     if (!isValidNgPhone(data.phone)) {
       return NextResponse.json(
-        { error: "Enter a valid phone number (e.g. 0803 123 4567)." },
+        {
+          error:
+            "Enter a valid Nigerian phone number (e.g. 08012345678 or +2348012345678)",
+        },
         { status: 400 }
       );
     }
 
-    const userId = session.user.id;
-    const email = (session.user.email || data.email).toLowerCase().trim();
-
-    // Resolve every line from DB — never trust client price/name
-    type Line = {
+    const lines: {
       productId: string;
       productName: string;
       productSlug: string;
       quantity: number;
       unitPrice: number;
       stock: number;
-    };
-    const lines: Line[] = [];
+    }[] = [];
+
+    let subtotal = 0;
 
     for (const item of data.items) {
-      const dbProduct = await prisma.storeProduct.findFirst({
+      const product = await prisma.storeProduct.findFirst({
         where: {
-          OR: [
-            { id: item.id },
-            ...(item.slug ? [{ slug: item.slug }] : []),
-          ],
-          published: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          price: true,
-          stock: true,
+          OR: [{ id: item.id }, { slug: item.slug || item.id }],
+          active: true,
         },
       });
 
-      if (!dbProduct) {
+      if (!product) {
+        return NextResponse.json(
+          { error: `Product not found: ${item.id}` },
+          { status: 400 }
+        );
+      }
+
+      if (product.stock < item.quantity) {
         return NextResponse.json(
           {
-            error: `Product not found or unavailable (${item.slug || item.id}).`,
-            code: "PRODUCT_MISSING",
+            error: `Insufficient stock for ${product.name}. Available: ${product.stock}`,
+            code: "OUT_OF_STOCK",
+            productId: product.id,
+            stock: product.stock,
           },
           { status: 400 }
         );
       }
 
-      if (dbProduct.stock < item.quantity) {
-        return NextResponse.json(
-          {
-            error: `"${dbProduct.name}" has only ${dbProduct.stock} left (max reached).`,
-            code: "STOCK_MAX",
-            productName: dbProduct.name,
-            stock: dbProduct.stock,
-          },
-          { status: 400 }
-        );
-      }
-
-      const unitPrice = Number(dbProduct.price);
-      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-        return NextResponse.json(
-          { error: `Invalid price for "${dbProduct.name}". Contact support.` },
-          { status: 400 }
-        );
-      }
-
+      const unit = Number(product.price);
+      subtotal += unit * item.quantity;
       lines.push({
-        productId: dbProduct.id,
-        productName: dbProduct.name,
-        productSlug: dbProduct.slug,
+        productId: product.id,
+        productName: product.name,
+        productSlug: product.slug,
         quantity: item.quantity,
-        unitPrice,
-        stock: dbProduct.stock,
+        unitPrice: unit,
+        stock: product.stock,
       });
     }
 
-    const subtotal = lines.reduce(
-      (sum, l) => sum + l.unitPrice * l.quantity,
-      0
-    );
-    const { shipping } = calcShipping(subtotal, data.state);
-    const tax = Number((subtotal * 0.075).toFixed(2));
-    const total = Number((subtotal + shipping + tax).toFixed(2));
+    const shippingCalc = calcShipping({
+      state: data.state,
+      subtotalNgn: subtotal,
+    });
+    const shipping = shippingCalc.amount;
+    const total = subtotal + shipping;
+
     const orderNumber = generateOrderNumber();
-    const initialStatus =
+
+    const paymentStatus =
       data.paymentMethod === "bank" || data.paymentMethod === "opay"
         ? "PENDING"
-        : "PROCESSING";
+        : "PENDING";
 
     const order = await prisma.order.create({
       data: {
         orderNumber,
-        userId,
-        customerEmail: email,
-        customerPhone: data.phone.trim(),
-        status: initialStatus,
+        userId: session.user.id,
+        status: "PENDING",
+        paymentStatus,
         subtotal,
         shipping,
-        tax,
         total,
-        shippingName: `${data.firstName} ${data.lastName}`.trim(),
-        shippingAddress: `${data.address}, ${data.state}`,
+        shippingFirstName: data.firstName,
+        shippingLastName: data.lastName,
+        shippingEmail: data.email,
+        shippingPhone: data.phone,
+        shippingAddress: data.address,
         shippingCity: data.city,
+        shippingState: data.state,
         shippingPostal: data.postal,
         shippingCountry: data.country || "NG",
         paymentMethod: data.paymentMethod,
@@ -219,77 +204,72 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const baseUrl =
-      process.env.NEXTAUTH_URL ||
-      process.env.AUTH_URL ||
-      "https://hama-enterprise-store.vercel.app";
-
-    sendEmail({
-      to: email,
-      subject: orderStatusSubject(order.orderNumber, initialStatus),
-      html: orderStatusEmailHtml({
-        orderNumber: order.orderNumber,
-        status: initialStatus,
-        customerName: order.shippingName,
-        accountUrl: `${baseUrl}/account`,
-      }),
-      text: `Order ${order.orderNumber} placed. Status: ${initialStatus}. View: ${baseUrl}/account`,
-    }).catch((e) => console.error("[email] order confirmation failed:", e));
+    // Confirm order to customer
+    try {
+      await sendEmail({
+        to: data.email,
+        subject: orderStatusSubject("PENDING", orderNumber),
+        html: orderStatusEmailHtml({
+          orderNumber,
+          status: "PENDING",
+          customerName: `${data.firstName} ${data.lastName}`.trim(),
+          total,
+        }),
+        text: `Order ${orderNumber} received. Status: PENDING. Total: NGN ${total}`,
+      });
+    } catch (e) {
+      console.error("Order confirmation email failed:", e);
+    }
 
     return NextResponse.json({
       ok: true,
       order: {
         id: order.id,
         orderNumber: order.orderNumber,
+        total: order.total,
+        shipping: order.shipping,
+        subtotal: order.subtotal,
         status: order.status,
-        total: Number(order.total),
+        paymentStatus: order.paymentStatus,
         paymentMethod: order.paymentMethod,
-        createdAt: order.createdAt,
       },
+      shippingNote: shippingCalc.note,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
-        {
-          error: err.errors[0]?.message || "Invalid order data",
-          details: err.errors,
-        },
+        { error: err.errors[0]?.message || "Invalid order data" },
         { status: 400 }
       );
     }
     console.error("Create order error:", err);
     return NextResponse.json(
-      { error: "Failed to create order. Check database connection." },
+      { error: "Failed to create order" },
       { status: 500 }
     );
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await auth();
-
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "Please sign in to view orders" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const isAdmin = session.user.role === "ADMIN";
-
     const orders = await prisma.order.findMany({
       where: isAdmin ? undefined : { userId: session.user.id },
+      include: { items: true, user: { select: { email: true, name: true } } },
       orderBy: { createdAt: "desc" },
       take: 100,
-      include: { items: true },
     });
 
-    return NextResponse.json({ orders, isAdmin });
+    return NextResponse.json({ orders });
   } catch (err) {
     console.error("List orders error:", err);
     return NextResponse.json(
-      { error: "Failed to load orders" },
+      { error: "Failed to list orders" },
       { status: 500 }
     );
   }
