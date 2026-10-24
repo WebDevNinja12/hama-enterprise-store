@@ -88,94 +88,109 @@ export async function POST(req: NextRequest) {
 
     if (!isValidNgPhone(data.phone)) {
       return NextResponse.json(
-        {
-          error:
-            "Enter a valid Nigerian phone number (e.g. 08012345678 or +2348012345678)",
-        },
+        { error: "Enter a valid phone number (e.g. 0803 123 4567)." },
         { status: 400 }
       );
     }
 
-    const lines: {
+    const userId = session.user.id;
+    const email = (session.user.email || data.email).toLowerCase().trim();
+
+    type Line = {
       productId: string;
       productName: string;
       productSlug: string;
       quantity: number;
       unitPrice: number;
       stock: number;
-    }[] = [];
-
-    let subtotal = 0;
+    };
+    const lines: Line[] = [];
 
     for (const item of data.items) {
-      const product = await prisma.storeProduct.findFirst({
+      const dbProduct = await prisma.storeProduct.findFirst({
         where: {
-          OR: [{ id: item.id }, { slug: item.slug || item.id }],
-          active: true,
+          OR: [
+            { id: item.id },
+            ...(item.slug ? [{ slug: item.slug }] : []),
+          ],
+          published: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          price: true,
+          stock: true,
         },
       });
 
-      if (!product) {
-        return NextResponse.json(
-          { error: `Product not found: ${item.id}` },
-          { status: 400 }
-        );
-      }
-
-      if (product.stock < item.quantity) {
+      if (!dbProduct) {
         return NextResponse.json(
           {
-            error: `Insufficient stock for ${product.name}. Available: ${product.stock}`,
-            code: "OUT_OF_STOCK",
-            productId: product.id,
-            stock: product.stock,
+            error: `Product not found or unavailable (${item.slug || item.id}).`,
+            code: "PRODUCT_MISSING",
           },
           { status: 400 }
         );
       }
 
-      const unit = Number(product.price);
-      subtotal += unit * item.quantity;
+      if (dbProduct.stock < item.quantity) {
+        return NextResponse.json(
+          {
+            error: `"${dbProduct.name}" has only ${dbProduct.stock} left (max reached).`,
+            code: "STOCK_MAX",
+            productName: dbProduct.name,
+            stock: dbProduct.stock,
+          },
+          { status: 400 }
+        );
+      }
+
+      const unitPrice = Number(dbProduct.price);
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        return NextResponse.json(
+          { error: `Invalid price for "${dbProduct.name}". Contact support.` },
+          { status: 400 }
+        );
+      }
+
       lines.push({
-        productId: product.id,
-        productName: product.name,
-        productSlug: product.slug,
+        productId: dbProduct.id,
+        productName: dbProduct.name,
+        productSlug: dbProduct.slug,
         quantity: item.quantity,
-        unitPrice: unit,
-        stock: product.stock,
+        unitPrice,
+        stock: dbProduct.stock,
       });
     }
 
-    const shippingCalc = calcShipping({
-      state: data.state,
-      subtotalNgn: subtotal,
-    });
-    const shipping = shippingCalc.amount;
-    const total = subtotal + shipping;
-
+    const subtotal = lines.reduce(
+      (sum, l) => sum + l.unitPrice * l.quantity,
+      0
+    );
+    const { shipping } = calcShipping(subtotal, data.state);
+    const tax = Number((subtotal * 0.075).toFixed(2));
+    const total = Number((subtotal + shipping + tax).toFixed(2));
     const orderNumber = generateOrderNumber();
-
-    const paymentStatus =
+    const initialStatus =
       data.paymentMethod === "bank" || data.paymentMethod === "opay"
         ? "PENDING"
-        : "PENDING";
+        : "PROCESSING";
 
     const order = await prisma.order.create({
       data: {
         orderNumber,
-        userId: session.user.id,
-        status: "PENDING",
-        paymentStatus,
+        userId,
+        customerEmail: email,
+        customerPhone: data.phone.trim(),
+        status: initialStatus,
         subtotal,
         shipping,
+        tax,
         total,
-        shippingFirstName: data.firstName,
-        shippingLastName: data.lastName,
-        shippingEmail: data.email,
-        shippingPhone: data.phone,
-        shippingAddress: data.address,
+        shippingName: `${data.firstName} ${data.lastName}`.trim(),
+        shippingAddress: `${data.address}, ${data.state}`,
         shippingCity: data.city,
-        shippingState: data.state,
         shippingPostal: data.postal,
         shippingCountry: data.country || "NG",
         paymentMethod: data.paymentMethod,
@@ -204,72 +219,77 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Confirm order to customer
-    try {
-      await sendEmail({
-        to: data.email,
-        subject: orderStatusSubject("PENDING", orderNumber),
-        html: orderStatusEmailHtml({
-          orderNumber,
-          status: "PENDING",
-          customerName: `${data.firstName} ${data.lastName}`.trim(),
-          total,
-        }),
-        text: `Order ${orderNumber} received. Status: PENDING. Total: NGN ${total}`,
-      });
-    } catch (e) {
-      console.error("Order confirmation email failed:", e);
-    }
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      process.env.AUTH_URL ||
+      "https://hama-enterprise-store.vercel.app";
+
+    sendEmail({
+      to: email,
+      subject: orderStatusSubject(order.orderNumber, initialStatus),
+      html: orderStatusEmailHtml({
+        orderNumber: order.orderNumber,
+        status: initialStatus,
+        customerName: order.shippingName,
+        accountUrl: `${baseUrl}/account`,
+      }),
+      text: `Order ${order.orderNumber} placed. Status: ${initialStatus}. View: ${baseUrl}/account`,
+    }).catch((e) => console.error("[email] order confirmation failed:", e));
 
     return NextResponse.json({
       ok: true,
       order: {
         id: order.id,
         orderNumber: order.orderNumber,
-        total: order.total,
-        shipping: order.shipping,
-        subtotal: order.subtotal,
         status: order.status,
-        paymentStatus: order.paymentStatus,
+        total: Number(order.total),
         paymentMethod: order.paymentMethod,
+        createdAt: order.createdAt,
       },
-      shippingNote: shippingCalc.note,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
-        { error: err.errors[0]?.message || "Invalid order data" },
+        {
+          error: err.errors[0]?.message || "Invalid order data",
+          details: err.errors,
+        },
         { status: 400 }
       );
     }
     console.error("Create order error:", err);
     return NextResponse.json(
-      { error: "Failed to create order" },
+      { error: "Failed to create order. Check database connection." },
       { status: 500 }
     );
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const session = await auth();
+
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Please sign in to view orders" },
+        { status: 401 }
+      );
     }
 
     const isAdmin = session.user.role === "ADMIN";
+
     const orders = await prisma.order.findMany({
       where: isAdmin ? undefined : { userId: session.user.id },
-      include: { items: true, user: { select: { email: true, name: true } } },
       orderBy: { createdAt: "desc" },
       take: 100,
+      include: { items: true },
     });
 
-    return NextResponse.json({ orders });
+    return NextResponse.json({ orders, isAdmin });
   } catch (err) {
     console.error("List orders error:", err);
     return NextResponse.json(
-      { error: "Failed to list orders" },
+      { error: "Failed to load orders" },
       { status: 500 }
     );
   }
