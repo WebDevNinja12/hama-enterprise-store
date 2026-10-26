@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Package, LogOut, User, Shield, Camera, Trash2 } from "lucide-react";
+import { fullLogout } from "@/lib/logout-client";
 
 type OrderItem = {
   id: string;
@@ -42,7 +43,6 @@ export default function AccountPage() {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
-  // Load full profile image from API (not from cookie)
   useEffect(() => {
     if (status !== "authenticated") return;
     (async () => {
@@ -104,7 +104,6 @@ export default function AccountPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
-      // Update session with SAFE (non-data-URL) values only
       await update({
         image: data.user.image,
         hasCustomImage: data.user.hasCustomImage,
@@ -130,7 +129,7 @@ export default function AccountPage() {
       const res = await fetch("/api/account", { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete");
-      await signOut({ callbackUrl: "/" });
+      await fullLogout("/");
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete");
       setDeleting(false);
@@ -205,7 +204,8 @@ export default function AccountPage() {
             </Link>
           )}
           <button
-            onClick={() => signOut({ callbackUrl: "/" })}
+            type="button"
+            onClick={() => fullLogout("/")}
             className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
           >
             <LogOut className="h-4 w-4" /> Sign out
@@ -306,6 +306,7 @@ export default function AccountPage() {
           <p className="mb-3 text-sm text-red-400">{deleteError}</p>
         )}
         <button
+          type="button"
           onClick={handleDeleteAccount}
           disabled={deleting}
           className="inline-flex items-center gap-2 rounded-full bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/25 disabled:opacity-50"
