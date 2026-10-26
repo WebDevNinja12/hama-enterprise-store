@@ -30,6 +30,7 @@ declare module "next-auth" {
   }
   interface User {
     role: Role;
+    adminSessionId?: string;
   }
 }
 
@@ -39,6 +40,7 @@ const providers: Provider[] = [
     credentials: {
       email: { label: "Email", type: "email" },
       password: { label: "Password", type: "password" },
+      adminSessionId: { label: "Admin session", type: "text" },
     },
     async authorize(credentials) {
       if (!credentials?.email || !credentials?.password) return null;
@@ -75,7 +77,6 @@ const providers: Provider[] = [
         return null;
       }
 
-      // Admins always allowed; customers need verified email
       if (!user.emailVerified && user.role !== "ADMIN") {
         await recordLoginFailure(limitKey);
         throw new Error("EMAIL_NOT_VERIFIED");
@@ -89,6 +90,36 @@ const providers: Provider[] = [
 
       await clearLoginFailures(limitKey);
 
+      const adminSessionId = credentials.adminSessionId
+        ? String(credentials.adminSessionId)
+        : "";
+
+      if (user.role === "ADMIN") {
+        if (!adminSessionId) {
+          throw new Error("ADMIN_DEVICE_REQUIRED");
+        }
+        try {
+          const sess = await prisma.adminDeviceSession.findFirst({
+            where: {
+              sessionId: adminSessionId,
+              userId: user.id,
+              revokedAt: null,
+            },
+          });
+          if (!sess) {
+            throw new Error("ADMIN_DEVICE_INVALID");
+          }
+          await prisma.adminDeviceSession.update({
+            where: { id: sess.id },
+            data: { lastActiveAt: new Date() },
+          });
+        } catch (e) {
+          if (e instanceof Error && e.message.startsWith("ADMIN_")) throw e;
+          console.error("[auth] admin session check:", e);
+          throw new Error("ADMIN_DEVICE_INVALID");
+        }
+      }
+
       prisma.user
         .update({
           where: { id: user.id },
@@ -101,6 +132,7 @@ const providers: Provider[] = [
         email: user.email,
         name: user.name,
         role: user.role,
+        adminSessionId: user.role === "ADMIN" ? adminSessionId : undefined,
       };
     },
   }),
@@ -203,6 +235,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         slim.sub = sub;
         slim.role = role;
         slim.la = now;
+        const sid = (user as { adminSessionId?: string }).adminSessionId;
+        if (role === "ADMIN" && sid) slim.sid = sid;
         return slim as typeof token;
       }
 
@@ -221,9 +255,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return { exp: 0 } as typeof token;
       }
 
+      if (role === "ADMIN" && token.sid) {
+        try {
+          const sess = await prisma.adminDeviceSession.findFirst({
+            where: {
+              sessionId: String(token.sid),
+              userId: String(token.sub),
+              revokedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!sess) {
+            return { exp: 0 } as typeof token;
+          }
+          if (now - lastActive > 60) {
+            prisma.adminDeviceSession
+              .update({
+                where: { id: sess.id },
+                data: { lastActiveAt: new Date() },
+              })
+              .catch(() => {});
+          }
+        } catch {
+          return { exp: 0 } as typeof token;
+        }
+      }
+
       slim.sub = token.sub;
       slim.role = role;
       slim.la = now - lastActive > 60 ? now : lastActive;
+      if (token.sid) slim.sid = token.sid;
 
       return slim as typeof token;
     },

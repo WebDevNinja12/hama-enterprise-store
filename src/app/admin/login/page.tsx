@@ -21,9 +21,44 @@ function AdminLoginForm() {
     setLoading(true);
     setError("");
 
+    const em = email.trim().toLowerCase();
+
+    // Device gate: max 3 admin sessions; blocks + emails on limit
+    let sessionId = "";
+    try {
+      const pre = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: em, password }),
+      });
+      const data = await pre.json();
+      if (!pre.ok) {
+        if (data.code === "DEVICE_LIMIT") {
+          setError(
+            data.error ||
+              "Maximum 3 admin devices already signed in. Revoke one from Security on an active device."
+          );
+        } else if (data.code === "DEVICE_BLOCKED") {
+          setError(data.error || "This device is blocked from admin access.");
+        } else if (data.code === "LOCKED") {
+          setError("Too many failed attempts. Wait 5 minutes and try again.");
+        } else {
+          setError(data.error || "Invalid admin credentials.");
+        }
+        setLoading(false);
+        return;
+      }
+      sessionId = data.sessionId || "";
+    } catch {
+      setError("Could not reach server. Try again.");
+      setLoading(false);
+      return;
+    }
+
     const res = await signIn("credentials", {
-      email: email.trim().toLowerCase(),
+      email: em,
       password,
+      adminSessionId: sessionId,
       redirect: false,
     });
 
@@ -31,19 +66,17 @@ function AdminLoginForm() {
       if (res.error === "LOGIN_LOCKED" || String(res.error).includes("LOCKED")) {
         setError("Too many failed attempts. Wait 5 minutes and try again.");
       } else {
-        setError("Invalid admin credentials.");
+        setError("Invalid admin credentials or device session expired.");
       }
       setLoading(false);
       return;
     }
 
-    // Verify role is ADMIN — customers cannot use this portal
     try {
       const me = await fetch("/api/auth/session", { credentials: "include" });
       const data = await me.json();
       if (data?.user?.role !== "ADMIN") {
         setError("This account is not an administrator. Use the customer sign-in.");
-        // Sign out non-admin from admin portal
         await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
         setLoading(false);
         return;
@@ -67,14 +100,14 @@ function AdminLoginForm() {
         <div>
           <h1 className="text-xl font-bold text-[var(--heading)]">Admin sign in</h1>
           <p className="text-xs text-[var(--muted)]">
-            Staff only · separate from customer login
+            Staff only · max 3 devices · separate from customers
           </p>
         </div>
       </div>
 
       {reason === "idle" && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Admin session expired due to inactivity. Sign in again.
+          Admin session expired due to inactivity (15 min). Sign in again.
         </div>
       )}
 
