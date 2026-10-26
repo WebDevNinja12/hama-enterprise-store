@@ -1,8 +1,8 @@
 /** Central session / cookie policy for HAMA store */
 
 export const SESSION = {
-  /** Admin idle — longer so product forms are not cut off mid-edit */
-  ADMIN_IDLE_MS: 30 * 60 * 1000,
+  /** Admin idle — short timeout for security */
+  ADMIN_IDLE_MS: 15 * 60 * 1000,
   /** Customer idle timeout */
   CUSTOMER_IDLE_MS: 15 * 60 * 1000,
   /** First-time / anonymous visitor cookie */
@@ -11,6 +11,8 @@ export const SESSION = {
   JWT_MAX_AGE_SEC: 30 * 60,
   /** Update lastActive at most this often */
   ACTIVITY_TOUCH_MS: 30 * 1000,
+  /** Max concurrent admin devices (browsers) */
+  MAX_ADMIN_DEVICES: 3,
 } as const;
 
 export const COOKIE_NAMES = {
@@ -39,10 +41,7 @@ export const ALLOWED_BOTS =
 export const BAD_BOTS =
   /scrapy|curl\/|wget|python-requests|libwww|httpclient|java\/|go-http|php\/|nikto|sqlmap|nmap|masscan|zgrab/i;
 
-/** OPay webhook + callback paths (not rate-limited as harshly as public APIs) */
 export const OPAY_PATH = /^\/api\/(webhooks?\/)?opay/i;
-
-/** @deprecated Paystack removed — kept only so old matchers do not break */
 export const PAYSTACK_PATH = /^\/api\/(webhooks?\/)?paystack/i;
 
 export function isProduction() {
@@ -50,11 +49,15 @@ export function isProduction() {
 }
 
 export function customerCookieName() {
-  return isProduction() ? COOKIE_NAMES.CUSTOMER_SESSION : COOKIE_NAMES.CUSTOMER_SESSION_DEV;
+  return isProduction()
+    ? COOKIE_NAMES.CUSTOMER_SESSION
+    : COOKIE_NAMES.CUSTOMER_SESSION_DEV;
 }
 
 export function adminCookieName() {
-  return isProduction() ? COOKIE_NAMES.ADMIN_SESSION : COOKIE_NAMES.ADMIN_SESSION_DEV;
+  return isProduction()
+    ? COOKIE_NAMES.ADMIN_SESSION
+    : COOKIE_NAMES.ADMIN_SESSION_DEV;
 }
 
 export function visitorCookieName() {

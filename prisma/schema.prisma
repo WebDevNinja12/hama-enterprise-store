@@ -26,21 +26,22 @@ enum MediaType {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  name          String?
-  email         String     @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  role          Role       @default(USER)
-  lastActiveAt  DateTime   @default(now())
-  accounts      Account[]
-  sessions      Session[]
-  orders        Order[]
-  cartItems     CartItem[]
-  reviews       Review[]
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id                 String               @id @default(cuid())
+  name               String?
+  email              String               @unique
+  emailVerified      DateTime?
+  image              String?
+  password           String?
+  role               Role                 @default(USER)
+  lastActiveAt       DateTime             @default(now())
+  accounts           Account[]
+  sessions           Session[]
+  orders             Order[]
+  cartItems          CartItem[]
+  reviews            Review[]
+  adminDeviceSessions AdminDeviceSession[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 }
 
 model Account {
@@ -75,6 +76,34 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+/** Active admin browser/device sessions (max 3). */
+model AdminDeviceSession {
+  id          String    @id @default(cuid())
+  userId      String
+  sessionId   String    @unique
+  userAgent   String?   @db.Text
+  ip          String?
+  deviceLabel String?
+  lastActiveAt DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+/** Devices/IPs blocked from admin login. */
+model BlockedAdminDevice {
+  id        String   @id @default(cuid())
+  ip        String?
+  userAgent String?  @db.Text
+  reason    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([ip])
 }
 
 model Category {
@@ -206,7 +235,6 @@ model GalleryMedia {
   updatedAt DateTime  @updatedAt
 }
 
-// Single promo video for main site About page (key = "about-promo")
 model SiteMedia {
   id        String   @id @default(cuid())
   key       String   @unique
