@@ -16,7 +16,10 @@ type HomeProduct = {
   brand: string;
   image?: string;
   imageUrl?: string;
+  description?: string;
 };
+
+const MOTTO = "Building innovation through quality and trust";
 
 export default function HomePage() {
   const [products, setProducts] = useState<HomeProduct[]>([]);
@@ -33,6 +36,9 @@ export default function HomePage() {
   const categories = [
     ...new Set(products.map((p) => p.category).filter(Boolean)),
   ].slice(0, 4);
+
+  // Newest product from admin (API returns newest first)
+  const featured = products[0] ?? null;
 
   return (
     <div className="pb-20">
@@ -59,6 +65,10 @@ export default function HomePage() {
               </span>
             </h1>
 
+            <p className="mb-3 max-w-md text-base font-medium italic leading-relaxed text-cyan-300/90 sm:text-lg">
+              “{MOTTO}”
+            </p>
+
             <p className="mb-8 max-w-md text-base leading-relaxed text-[var(--muted)] sm:text-lg">
               Official online store. Browse real inventory added by our team —
               tools, materials, and enterprise supplies.
@@ -82,20 +92,73 @@ export default function HomePage() {
             </div>
           </div>
 
+          {/* Dynamic card: newest product OR confidence + motto fallback */}
           <div className="relative flex justify-center lg:justify-end">
-            <div className="card relative w-full max-w-md overflow-hidden p-6">
-              <p className="text-sm font-semibold text-[var(--heading)]">
-                Shop with confidence
-              </p>
-              <p className="mt-2 text-sm text-[var(--muted)]">
-                Secure checkout · Account required · Orders managed by HAMA admin
-              </p>
-              <Link
-                href="/catalog"
-                className="btn-primary mt-6 inline-flex px-5 py-2.5 text-sm"
-              >
-                View products
-              </Link>
+            <div className="card relative w-full max-w-md overflow-hidden">
+              {loading ? (
+                <div className="p-6">
+                  <p className="text-sm text-[var(--muted)]">Loading…</p>
+                </div>
+              ) : featured ? (
+                <>
+                  <div className="relative aspect-[16/10] bg-[var(--surface)]">
+                    <SafeImage
+                      src={productImage(featured)}
+                      alt={featured.name}
+                      fill
+                      useFill
+                      sizes="(max-width: 768px) 100vw, 400px"
+                      className="object-cover"
+                    />
+                    <span className="absolute left-3 top-3 rounded-full bg-cyan-500/90 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">
+                      New
+                    </span>
+                  </div>
+                  <div className="p-6">
+                    <p className="text-xs font-medium uppercase tracking-wider text-cyan-400">
+                      Newest from admin
+                    </p>
+                    <h2 className="mt-1 text-lg font-semibold text-[var(--heading)]">
+                      {featured.name}
+                    </h2>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {featured.brand}
+                      {featured.category ? ` · ${featured.category}` : ""}
+                    </p>
+                    <p className="mt-3 text-xl font-bold text-cyan-400">
+                      ₦{Number(featured.price).toLocaleString("en-NG")}
+                    </p>
+                    <Link
+                      href={`/product/${featured.slug}`}
+                      className="btn-primary mt-5 inline-flex px-5 py-2.5 text-sm"
+                    >
+                      View product
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="p-6">
+                  <p className="text-sm font-semibold text-[var(--heading)]">
+                    Shop with confidence
+                  </p>
+                  <p className="mt-3 text-base font-medium leading-snug text-cyan-300/90">
+                    “{MOTTO}”
+                  </p>
+                  <p className="mt-3 text-sm text-[var(--muted)]">
+                    Secure checkout · Account required · Orders managed by HAMA
+                    admin
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    New products appear here when the admin adds them.
+                  </p>
+                  <Link
+                    href="/catalog"
+                    className="btn-primary mt-6 inline-flex px-5 py-2.5 text-sm"
+                  >
+                    View products
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -104,16 +167,30 @@ export default function HomePage() {
       <section className="border-y border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:grid-cols-3 sm:px-6 lg:px-8">
           {[
-            { icon: Truck, title: "Delivery options", desc: "Arranged after order confirmation" },
-            { icon: Shield, title: "Secure checkout", desc: "Encrypted payments & accounts" },
-            { icon: Zap, title: "Real inventory", desc: "Only products added by admin" },
+            {
+              icon: Truck,
+              title: "Delivery options",
+              desc: "Arranged after order confirmation",
+            },
+            {
+              icon: Shield,
+              title: "Secure checkout",
+              desc: "Encrypted payments & accounts",
+            },
+            {
+              icon: Zap,
+              title: "Real inventory",
+              desc: "Only products added by admin",
+            },
           ].map((item) => (
             <div key={item.title} className="flex items-center gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-400">
                 <item.icon className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-[var(--heading)]">{item.title}</p>
+                <p className="text-sm font-semibold text-[var(--heading)]">
+                  {item.title}
+                </p>
                 <p className="text-xs text-[var(--muted)]">{item.desc}</p>
               </div>
             </div>
@@ -163,11 +240,14 @@ export default function HomePage() {
           <p className="text-[var(--muted)]">Loading products…</p>
         ) : products.length === 0 ? (
           <div className="card p-10 text-center">
-            <p className="text-[var(--heading)] font-semibold">No products yet</p>
+            <p className="font-semibold text-[var(--heading)]">No products yet</p>
             <p className="mt-2 text-sm text-[var(--muted)]">
               Products appear here when the admin adds them with real photos.
             </p>
-            <Link href="/catalog" className="btn-primary mt-6 inline-flex px-6 py-2.5 text-sm">
+            <Link
+              href="/catalog"
+              className="btn-primary mt-6 inline-flex px-6 py-2.5 text-sm"
+            >
               Open catalog
             </Link>
           </div>
@@ -200,7 +280,7 @@ export default function HomePage() {
                     </h3>
                     <div className="flex items-center justify-between">
                       <p className="text-xl font-bold text-cyan-400">
-                        ${Number(product.price).toLocaleString()}
+                        ₦{Number(product.price).toLocaleString("en-NG")}
                       </p>
                       <span className="btn-primary px-4 py-2 text-xs">View</span>
                     </div>
