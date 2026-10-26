@@ -75,6 +75,12 @@ export default function AdminHomePage() {
       desc: "Promo video for About page on main site",
       icon: Video,
     },
+    {
+      href: "/admin/security",
+      title: "Security",
+      desc: "Devices (max 3), revoke sessions, block IPs",
+      icon: Shield,
+    },
   ];
 
   return (
@@ -89,7 +95,7 @@ export default function AdminHomePage() {
         </div>
       </div>
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {links.map((l) => (
           <Link key={l.href} href={l.href} className="card p-5 transition hover:border-cyan-500/40">
             <l.icon className="mb-3 h-6 w-6 text-cyan-400" />
@@ -120,8 +126,9 @@ export default function AdminHomePage() {
           </button>
         </div>
         {schemaMsg && (
-          <p className="mt-3 inline-flex items-center gap-2 text-sm text-emerald-400">
-            <CheckCircle2 className="h-4 w-4" /> {schemaMsg}
+          <p className="mt-3 flex items-center gap-2 text-sm text-cyan-400">
+            <CheckCircle2 className="h-4 w-4" />
+            {schemaMsg}
           </p>
         )}
       </div>
