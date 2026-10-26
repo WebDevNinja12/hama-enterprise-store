@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import crypto from "crypto";
 import { otpEmailHtml, sendEmail } from "@/lib/email";
+import { rateLimitIncr } from "@/lib/redis";
 
 const schema = z.object({
   email: z.string().email(),
@@ -10,15 +11,36 @@ const schema = z.object({
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 
-export async function POST(req: Request) {
+function clientIp(req: NextRequest) {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { email: raw } = schema.parse(body);
     const email = raw.toLowerCase().trim();
+    const ip = clientIp(req);
+
+    const rl = await rateLimitIncr(`resend-otp:${ip}:${email}`, 4, 60 * 60);
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "Too many resend requests. Try again later." },
+        { status: 429 }
+      );
+    }
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return NextResponse.json({ error: "Account not found" }, { status: 404 });
+      // Do not leak whether email exists
+      return NextResponse.json({
+        ok: true,
+        message: "If that email is registered and unverified, a code was sent.",
+      });
     }
     if (user.emailVerified) {
       return NextResponse.json(
@@ -34,7 +56,11 @@ export async function POST(req: Request) {
       where: { identifier: `otp:${email}` },
     });
     await prisma.verificationToken.create({
-      data: { identifier: `otp:${email}`, token: otp, expires },
+      data: {
+        identifier: `otp:${email}`,
+        token: otp,
+        expires,
+      },
     });
 
     const sent = await sendEmail({
@@ -53,13 +79,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: `A new code was sent to ${email}.`,
+      message: "A new code was sent to your email.",
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid email" }, { status: 400 });
     }
     console.error("Resend OTP error:", err);
-    return NextResponse.json({ error: "Failed to resend" }, { status: 500 });
+    return NextResponse.json({ error: "Could not resend code" }, { status: 500 });
   }
 }

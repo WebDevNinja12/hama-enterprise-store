@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 const ADMIN_LOGO =
   "https://raw.githubusercontent.com/WebDevNinja12/hama-enterprise-store/main/logo.png";
 
-/** Get profile including full image (data URL stays out of cookies) */
 export async function GET() {
   try {
     const session = await auth();
@@ -21,6 +20,8 @@ export async function GET() {
         email: true,
         image: true,
         role: true,
+        emailVerified: true,
+        createdAt: true,
       },
     });
 
@@ -29,26 +30,26 @@ export async function GET() {
     }
 
     let image = user.image;
-    if (!image && user.role === "ADMIN") {
+    if (user.role === "ADMIN" && (!image || image.startsWith("data:"))) {
       image = ADMIN_LOGO;
     }
 
     return NextResponse.json({
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
+        ...user,
         image,
-        role: user.role,
+        hasCustomImage: Boolean(user.image && user.image.startsWith("data:")),
       },
     });
   } catch (err) {
     console.error("Get account error:", err);
-    return NextResponse.json({ error: "Failed to load profile" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to load profile" },
+      { status: 500 }
+    );
   }
 }
 
-/** Update profile (name, image) — any signed-in user */
 export async function PATCH(req: NextRequest) {
   try {
     const session = await auth();
@@ -65,7 +66,6 @@ export async function PATCH(req: NextRequest) {
     if (body.image === null) {
       data.image = null;
     } else if (typeof body.image === "string") {
-      // Cap data URLs so DB does not grow unbounded
       if (body.image.startsWith("data:") && body.image.length > 800_000) {
         return NextResponse.json(
           { error: "Image too large (max ~600KB). Use a smaller photo." },
@@ -81,7 +81,6 @@ export async function PATCH(req: NextRequest) {
       select: { id: true, name: true, email: true, image: true, role: true },
     });
 
-    // Do NOT return the full data URL to be put into session.update()
     return NextResponse.json({
       ok: true,
       user: {
@@ -90,9 +89,10 @@ export async function PATCH(req: NextRequest) {
         email: user.email,
         role: user.role,
         hasCustomImage: Boolean(user.image && user.image.startsWith("data:")),
-        // short safe image for session only
         image:
-          user.image && !user.image.startsWith("data:") && user.image.length < 500
+          user.image &&
+          !user.image.startsWith("data:") &&
+          user.image.length < 500
             ? user.image
             : user.role === "ADMIN"
               ? ADMIN_LOGO
@@ -101,11 +101,14 @@ export async function PATCH(req: NextRequest) {
     });
   } catch (err) {
     console.error("Update account error:", err);
-    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update profile" },
+      { status: 500 }
+    );
   }
 }
 
-/** Delete own account — available to every signed-in customer */
+/** Delete own account — detach orders, remove related rows first */
 export async function DELETE() {
   try {
     const session = await auth();
@@ -113,10 +116,42 @@ export async function DELETE() {
       return NextResponse.json({ error: "Sign in required" }, { status: 401 });
     }
 
-    await prisma.user.delete({ where: { id: session.user.id } });
+    const userId = session.user.id;
+
+    // Admins should not self-delete via this path without care
+    const me = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (me?.role === "ADMIN") {
+      return NextResponse.json(
+        {
+          error:
+            "Admin accounts cannot be deleted here. Contact a system operator.",
+        },
+        { status: 403 }
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.updateMany({
+        where: { userId },
+        data: { userId: null },
+      });
+      await tx.cartItem.deleteMany({ where: { userId } });
+      await tx.review.deleteMany({ where: { userId } });
+      await tx.adminDeviceSession.deleteMany({ where: { userId } }).catch(() => {});
+      await tx.account.deleteMany({ where: { userId } });
+      await tx.session.deleteMany({ where: { userId } });
+      await tx.user.delete({ where: { id: userId } });
+    });
+
     return NextResponse.json({ ok: true, message: "Account deleted" });
   } catch (err) {
     console.error("Delete account error:", err);
-    return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to delete account. You may still have linked data." },
+      { status: 500 }
+    );
   }
 }
