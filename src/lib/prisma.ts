@@ -4,15 +4,15 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-/** Resolve DB URL from standard or Vercel Storage-prefixed names. */
+/** Prefer the newest linked store (hamadatabase_*), then plain DATABASE_URL. */
 function resolveDatabaseUrl(): string | undefined {
   return (
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.PRISMA_DATABASE_URL ||
     process.env.hamadatabase_DATABASE_URL ||
     process.env.hamadatabase_POSTGRES_URL ||
     process.env.hamadatabase_PRISMA_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.PRISMA_DATABASE_URL ||
     process.env.hamastoredatabase_DATABASE_URL ||
     process.env.hamastoredatabase_POSTGRES_URL ||
     process.env.hamasave_DATABASE_URL ||
