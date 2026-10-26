@@ -23,7 +23,6 @@ function AdminLoginForm() {
 
     const em = email.trim().toLowerCase();
 
-    // Device gate: max 3 admin sessions; blocks + emails on limit
     let sessionId = "";
     try {
       const pre = await fetch("/api/admin/login", {
@@ -77,7 +76,7 @@ function AdminLoginForm() {
       const data = await me.json();
       if (data?.user?.role !== "ADMIN") {
         setError("This account is not an administrator. Use the customer sign-in.");
-        await fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
+        await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
         setLoading(false);
         return;
       }
@@ -100,14 +99,14 @@ function AdminLoginForm() {
         <div>
           <h1 className="text-xl font-bold text-[var(--heading)]">Admin sign in</h1>
           <p className="text-xs text-[var(--muted)]">
-            Staff only · max 3 devices · separate from customers
+            Staff only · max 3 devices · 5 min idle timeout
           </p>
         </div>
       </div>
 
       {reason === "idle" && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Admin session expired due to inactivity (15 min). Sign in again.
+          Admin session expired due to inactivity (5 min). Sign in again.
         </div>
       )}
 
