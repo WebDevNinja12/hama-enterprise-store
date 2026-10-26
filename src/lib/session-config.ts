@@ -1,13 +1,13 @@
 /** Central session / cookie policy for HAMA store */
 
 export const SESSION = {
-  /** Admin idle — short timeout for security */
-  ADMIN_IDLE_MS: 15 * 60 * 1000,
+  /** Admin idle — 5 minutes of inactivity */
+  ADMIN_IDLE_MS: 5 * 60 * 1000,
   /** Customer idle timeout */
   CUSTOMER_IDLE_MS: 15 * 60 * 1000,
   /** First-time / anonymous visitor cookie */
   VISITOR_MAX_AGE_SEC: 60 * 60,
-  /** Absolute max JWT lifetime */
+  /** Absolute max JWT lifetime (cookie maxAge) */
   JWT_MAX_AGE_SEC: 30 * 60,
   /** Update lastActive at most this often */
   ACTIVITY_TOUCH_MS: 30 * 1000,
