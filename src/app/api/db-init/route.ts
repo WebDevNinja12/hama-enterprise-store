@@ -1,21 +1,35 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+function setupAllowed(req: Request): boolean {
+  if (process.env.ALLOW_SETUP === "true") {
+    const secret = process.env.ADMIN_BOOTSTRAP_SECRET;
+    if (!secret) return false;
+    return req.headers.get("x-bootstrap-secret") === secret;
+  }
+  const secret = process.env.ADMIN_BOOTSTRAP_SECRET;
+  if (secret) {
+    return req.headers.get("x-bootstrap-secret") === secret;
+  }
+  return process.env.NODE_ENV !== "production";
+}
+
 /**
  * Creates all required tables on a fresh database.
- * Safe to call multiple times (IF NOT EXISTS).
+ * Locked in production unless ALLOW_SETUP=true + bootstrap secret.
  */
 export async function POST(req: Request) {
-  try {
-    const secret = process.env.ADMIN_BOOTSTRAP_SECRET;
-    if (secret) {
-      const hdr = req.headers.get("x-bootstrap-secret");
-      // Allow without header if secret not required for empty-db bootstrap
-      if (hdr && hdr !== secret) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
+  if (!setupAllowed(req)) {
+    return NextResponse.json(
+      {
+        error:
+          "db-init is disabled in production. Set ALLOW_SETUP=true and send x-bootstrap-secret only for emergency setup.",
+      },
+      { status: 403 }
+    );
+  }
 
+  try {
     const statements = [
       `DO $$ BEGIN CREATE TYPE "Role" AS ENUM ('USER', 'ADMIN'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
       `DO $$ BEGIN CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'); EXCEPTION WHEN duplicate_object THEN null; END $$`,
@@ -64,32 +78,6 @@ export async function POST(req: Request) {
         UNIQUE (identifier, token)
       )`,
 
-      `CREATE TABLE IF NOT EXISTS "Category" (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        slug TEXT NOT NULL UNIQUE,
-        description TEXT,
-        image TEXT,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS "Product" (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        slug TEXT NOT NULL UNIQUE,
-        description TEXT NOT NULL,
-        price DECIMAL(10,2) NOT NULL,
-        "compareAt" DECIMAL(10,2),
-        sku TEXT NOT NULL UNIQUE,
-        stock INTEGER NOT NULL DEFAULT 0,
-        "minStock" INTEGER NOT NULL DEFAULT 5,
-        images TEXT[] NOT NULL DEFAULT '{}',
-        featured BOOLEAN NOT NULL DEFAULT false,
-        "categoryId" TEXT NOT NULL REFERENCES "Category"(id),
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-
       `CREATE TABLE IF NOT EXISTS "StoreProduct" (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -108,16 +96,6 @@ export async function POST(req: Request) {
         published BOOLEAN NOT NULL DEFAULT true,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS "CartItem" (
-        id TEXT PRIMARY KEY,
-        "userId" TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
-        "productId" TEXT NOT NULL REFERENCES "Product"(id) ON DELETE CASCADE,
-        quantity INTEGER NOT NULL DEFAULT 1,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE ("userId", "productId")
       )`,
 
       `CREATE TABLE IF NOT EXISTS "Order" (
@@ -148,45 +126,32 @@ export async function POST(req: Request) {
       `CREATE TABLE IF NOT EXISTS "OrderItem" (
         id TEXT PRIMARY KEY,
         "orderId" TEXT NOT NULL REFERENCES "Order"(id) ON DELETE CASCADE,
-        "productId" TEXT REFERENCES "Product"(id),
+        "productId" TEXT,
         "productName" TEXT NOT NULL,
         "productSlug" TEXT,
         quantity INTEGER NOT NULL,
         price DECIMAL(10,2) NOT NULL
       )`,
 
-      `CREATE TABLE IF NOT EXISTS "Review" (
+      `CREATE TABLE IF NOT EXISTS "AdminDeviceSession" (
         id TEXT PRIMARY KEY,
-        rating INTEGER NOT NULL,
-        comment TEXT,
-        "userId" TEXT NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
-        "productId" TEXT NOT NULL REFERENCES "Product"(id) ON DELETE CASCADE,
+        "userId" TEXT NOT NULL,
+        "sessionId" TEXT NOT NULL UNIQUE,
+        "userAgent" TEXT,
+        ip TEXT,
+        "deviceLabel" TEXT,
+        "lastActiveAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE ("userId", "productId")
+        "revokedAt" TIMESTAMP(3)
       )`,
 
-      `CREATE TABLE IF NOT EXISTS "GalleryMedia" (
+      `CREATE TABLE IF NOT EXISTS "BlockedAdminDevice" (
         id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        type "MediaType" NOT NULL,
-        url TEXT NOT NULL,
-        poster TEXT,
-        narration TEXT,
-        published BOOLEAN NOT NULL DEFAULT true,
-        "sortOrder" INTEGER NOT NULL DEFAULT 0,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-
-      `CREATE TABLE IF NOT EXISTS "SiteMedia" (
-        id TEXT PRIMARY KEY,
-        key TEXT NOT NULL UNIQUE,
-        title TEXT,
-        url TEXT NOT NULL,
-        poster TEXT,
-        published BOOLEAN NOT NULL DEFAULT true,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ip TEXT,
+        "userAgent" TEXT,
+        reason TEXT,
+        "createdBy" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )`,
     ];
 
@@ -200,7 +165,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Verify User table
     const users = await prisma.user.count().catch(() => -1);
 
     return NextResponse.json({
@@ -219,5 +183,8 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ usage: "POST /api/db-init" });
+  return NextResponse.json({
+    usage: "POST /api/db-init",
+    locked: process.env.ALLOW_SETUP !== "true",
+  });
 }
