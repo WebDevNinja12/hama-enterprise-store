@@ -79,7 +79,6 @@ export async function isDeviceBlocked(ip: string, userAgent: string | null) {
 export async function pruneStaleAdminSessions(userId: string): Promise<number> {
   const cutoff = new Date(Date.now() - STALE_ADMIN_SESSION_MS);
   const res = await prisma.adminDeviceSession.updateMany({
-    repere: undefined as never,
     where: {
       userId,
       revokedAt: null,
@@ -122,15 +121,6 @@ export async function notifyAdminSecurity(opts: {
   html: string;
   text: string;
 }) {
-  const to =
-    process.env.ADMIN_NOTIFY_EMAIL ||
-    process.env.EMAIL_FROM?.match(/<([^>]+)>/)?.[1] ||
-    "";
-  if (!to || to.includes("resend.dev")) {
-    // Still try ADMIN_NOTIFY_EMAIL only
-    const fallback = process.env.ADMIN_NOTIFY_EMAIL;
-    if (!fallback) return { ok: false as const };
-  }
   const dest = process.env.ADMIN_NOTIFY_EMAIL;
   if (!dest) return { ok: false as const };
   return sendEmail({

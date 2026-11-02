@@ -8,6 +8,9 @@ import {
   ensureAdminDeviceTables,
   isDeviceBlocked,
   countActiveAdminSessions,
+  pruneStaleAdminSessions,
+  revokeAllAdminSessions,
+  revokeOldestAdminSession,
   notifyAdminSecurity,
   securityAlertHtml,
 } from "@/lib/admin-devices";
@@ -32,6 +35,9 @@ export async function POST(req: NextRequest) {
       .toLowerCase()
       .trim();
     const password = String(body.password || "");
+    /** If true and password is valid, revoke every device then sign in */
+    const forceClearDevices = Boolean(body.forceClearDevices);
+
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email and password required" },
@@ -103,7 +109,21 @@ export async function POST(req: NextRequest) {
 
     await clearLoginFailures(limitKey);
 
-    const active = await countActiveAdminSessions(user.id);
+    // Cookies may have expired while DB still listed old devices — free those slots
+    const pruned = await pruneStaleAdminSessions(user.id);
+
+    if (forceClearDevices) {
+      await revokeAllAdminSessions(user.id);
+    }
+
+    let active = await countActiveAdminSessions(user.id);
+
+    if (active >= MAX_ADMIN_DEVICES) {
+      // Still full after prune: drop the oldest to allow this legitimate password login
+      await revokeOldestAdminSession(user.id);
+      active = await countActiveAdminSessions(user.id);
+    }
+
     if (active >= MAX_ADMIN_DEVICES) {
       await notifyAdminSecurity({
         subject: "[HAMA] Admin login blocked — device limit (3)",
@@ -113,16 +133,18 @@ export async function POST(req: NextRequest) {
           ip,
           userAgent: userAgent || "(none)",
           when: new Date().toISOString(),
-          extra: `Already ${active} active admin sessions (max ${MAX_ADMIN_DEVICES}). New login was BLOCKED. Revoke a device in Admin → Security to allow this login.`,
+          extra: `Already ${active} active sessions (max ${MAX_ADMIN_DEVICES}).`,
         }),
-        text: `Admin login blocked for ${user.email} from ${ip}. Active sessions: ${active}/${MAX_ADMIN_DEVICES}`,
+        text: `Admin login blocked for ${user.email} from ${ip}.`,
       });
       return NextResponse.json(
         {
-          error: `Maximum ${MAX_ADMIN_DEVICES} admin devices are already signed in. Sign out on another device or revoke a session in Security (from a logged-in device).`,
+          error: `Maximum ${MAX_ADMIN_DEVICES} admin devices are still active. Sign in again with "Clear other devices" or wait for sessions to expire.`,
           code: "DEVICE_LIMIT",
           active,
           max: MAX_ADMIN_DEVICES,
+          pruned,
+          canForceClear: true,
         },
         { status: 403 }
       );
@@ -147,6 +169,8 @@ export async function POST(req: NextRequest) {
       email: user.email,
       active: active + 1,
       max: MAX_ADMIN_DEVICES,
+      pruned,
+      forced: forceClearDevices,
     });
   } catch (err) {
     console.error("[admin/login]", err);

@@ -14,12 +14,14 @@ function AdminLoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showForceClear, setShowForceClear] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function doLogin(forceClearDevices: boolean) {
     setLoading(true);
     setError("");
+    setInfo("");
 
     const em = email.trim().toLowerCase();
 
@@ -28,14 +30,15 @@ function AdminLoginForm() {
       const pre = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: em, password }),
+        body: JSON.stringify({ email: em, password, forceClearDevices }),
       });
       const data = await pre.json();
       if (!pre.ok) {
         if (data.code === "DEVICE_LIMIT") {
+          setShowForceClear(true);
           setError(
             data.error ||
-              "Maximum 3 admin devices already signed in. Revoke one from Security on an active device."
+              "Device limit reached. Use Clear other devices below if this is you."
           );
         } else if (data.code === "DEVICE_BLOCKED") {
           setError(data.error || "This device is blocked from admin access.");
@@ -48,6 +51,12 @@ function AdminLoginForm() {
         return;
       }
       sessionId = data.sessionId || "";
+      if (data.pruned > 0) {
+        setInfo(`Cleared ${data.pruned} expired device session(s).`);
+      }
+      if (data.forced) {
+        setInfo("Other admin devices were signed out.");
+      }
     } catch {
       setError("Could not reach server. Try again.");
       setLoading(false);
@@ -90,6 +99,11 @@ function AdminLoginForm() {
     router.refresh();
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await doLogin(false);
+  }
+
   return (
     <div className="card w-full max-w-md p-8">
       <div className="mb-4 flex items-center gap-3">
@@ -113,6 +127,11 @@ function AdminLoginForm() {
       {error && (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
+        </div>
+      )}
+      {info && (
+        <div className="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-300">
+          {info}
         </div>
       )}
 
@@ -149,6 +168,23 @@ function AdminLoginForm() {
           {loading ? "Verifying…" : "Sign in to admin"}
         </button>
       </form>
+
+      {showForceClear && (
+        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="mb-3 text-xs text-amber-100/90">
+            Old device slots may still be reserved even if you are not signed in
+            elsewhere. This signs out every other admin device, then logs you in.
+          </p>
+          <button
+            type="button"
+            disabled={loading || !email || !password}
+            onClick={() => doLogin(true)}
+            className="w-full rounded-full bg-amber-500/20 px-4 py-2.5 text-sm font-semibold text-amber-200 ring-1 ring-amber-500/40 hover:bg-amber-500/30 disabled:opacity-50"
+          >
+            Clear other devices and sign in
+          </button>
+        </div>
+      )}
 
       <p className="mt-6 text-center text-xs text-[var(--muted)]">
         Customer?{" "}
