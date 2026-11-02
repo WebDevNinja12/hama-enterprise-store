@@ -4,6 +4,12 @@ import { sendEmail } from "./email";
 
 export const MAX_ADMIN_DEVICES = SESSION.MAX_ADMIN_DEVICES;
 
+/** Sessions with no activity longer than this are treated as dead (not counted). */
+export const STALE_ADMIN_SESSION_MS = Math.max(
+  SESSION.ADMIN_IDLE_MS * 2,
+  SESSION.JWT_MAX_AGE_SEC * 1000
+);
+
 export function clientIpFromHeaders(h: Headers): string {
   return (
     h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -66,10 +72,49 @@ export async function isDeviceBlocked(ip: string, userAgent: string | null) {
   });
 }
 
+/**
+ * Mark sessions as revoked when lastActiveAt is older than JWT/idle window.
+ * Fixes lockout when cookies expired but DB rows were never revoked.
+ */
+export async function pruneStaleAdminSessions(userId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_ADMIN_SESSION_MS);
+  const res = await prisma.adminDeviceSession.updateMany({
+    repere: undefined as never,
+    where: {
+      userId,
+      revokedAt: null,
+      lastActiveAt: { lt: cutoff },
+    },
+    data: { revokedAt: new Date() },
+  });
+  return res.count;
+}
+
 export async function countActiveAdminSessions(userId: string) {
   return prisma.adminDeviceSession.count({
     where: { userId, revokedAt: null },
   });
+}
+
+export async function revokeAllAdminSessions(userId: string) {
+  return prisma.adminDeviceSession.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}
+
+/** Free one slot by revoking the least-recently-active session. */
+export async function revokeOldestAdminSession(userId: string) {
+  const oldest = await prisma.adminDeviceSession.findFirst({
+    where: { userId, revokedAt: null },
+    orderBy: { lastActiveAt: "asc" },
+  });
+  if (!oldest) return null;
+  await prisma.adminDeviceSession.update({
+    where: { id: oldest.id },
+    data: { revokedAt: new Date() },
+  });
+  return oldest;
 }
 
 export async function notifyAdminSecurity(opts: {
@@ -79,18 +124,21 @@ export async function notifyAdminSecurity(opts: {
 }) {
   const to =
     process.env.ADMIN_NOTIFY_EMAIL ||
-    process.env.ADMIN_EMAIL ||
-    "admin@hamaenterprise.ng";
-  try {
-    await sendEmail({
-      to,
-      subject: opts.subject,
-      html: opts.html,
-      text: opts.text,
-    });
-  } catch (e) {
-    console.error("[admin-devices] notify failed:", e);
+    process.env.EMAIL_FROM?.match(/<([^>]+)>/)?.[1] ||
+    "";
+  if (!to || to.includes("resend.dev")) {
+    // Still try ADMIN_NOTIFY_EMAIL only
+    const fallback = process.env.ADMIN_NOTIFY_EMAIL;
+    if (!fallback) return { ok: false as const };
   }
+  const dest = process.env.ADMIN_NOTIFY_EMAIL;
+  if (!dest) return { ok: false as const };
+  return sendEmail({
+    to: dest,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
+  });
 }
 
 export function securityAlertHtml(details: {
@@ -102,16 +150,15 @@ export function securityAlertHtml(details: {
   extra?: string;
 }) {
   return `
-  <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#0a0e17;color:#e8eef7;border-radius:12px;">
-    <h1 style="color:#f87171;font-size:18px;">${details.title}</h1>
-    <p style="color:#94a3b8;line-height:1.5;">A blocked or limited admin login attempt was recorded.</p>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;color:#cbd5e1;">
+  <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#0a0e17;color:#e8eef7;border-radius:12px;">
+    <h1 style="color:#f59e0b;font-size:18px;">${details.title}</h1>
+    <table style="width:100%;font-size:13px;color:#e8eef7;">
       <tr><td style="padding:6px 0;color:#64748b;">Account</td><td>${details.email}</td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">IP</td><td>${details.ip}</td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">Device</td><td style="word-break:break-all;">${details.userAgent}</td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">Time</td><td>${details.when}</td></tr>
       ${details.extra ? `<tr><td style="padding:6px 0;color:#64748b;">Note</td><td>${details.extra}</td></tr>` : ""}
     </table>
-    <p style="color:#64748b;font-size:12px;margin-top:16px;">Review devices in Admin → Security. You can revoke sessions or block this IP/device.</p>
+    <p style="color:#64748b;font-size:12px;margin-top:16px;">Review devices in Admin → Security. Stale sessions auto-expire after inactivity.</p>
   </div>`;
 }
