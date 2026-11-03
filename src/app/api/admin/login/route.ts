@@ -7,10 +7,6 @@ import {
   deviceLabelFromUa,
   ensureAdminDeviceTables,
   isDeviceBlocked,
-  countActiveAdminSessions,
-  pruneStaleAdminSessions,
-  revokeAllAdminSessions,
-  revokeOldestAdminSession,
   notifyAdminSecurity,
   securityAlertHtml,
 } from "@/lib/admin-devices";
@@ -26,17 +22,39 @@ function randomSessionId() {
   return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function randomCuidLike() {
+  return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Hard-clear every open admin device row (Prisma + raw SQL fallback). */
+async function resetAllDeviceSessions(userId: string) {
+  try {
+    await prisma.adminDeviceSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  } catch (e) {
+    console.warn("[admin/login] prisma revoke failed, using SQL", e);
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "AdminDeviceSession" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "userId" = $1 AND "revokedAt" IS NULL`,
+      userId
+    );
+  } catch (e) {
+    console.warn("[admin/login] SQL revoke failed", e);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     await ensureAdminDeviceTables();
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const email = String(body.email || "")
       .toLowerCase()
       .trim();
     const password = String(body.password || "");
-    /** If true and password is valid, revoke every device then sign in */
-    const forceClearDevices = Boolean(body.forceClearDevices);
 
     if (!email || !password) {
       return NextResponse.json(
@@ -109,68 +127,46 @@ export async function POST(req: NextRequest) {
 
     await clearLoginFailures(limitKey);
 
-    // Cookies may have expired while DB still listed old devices — free those slots
-    const pruned = await pruneStaleAdminSessions(user.id);
-
-    if (forceClearDevices) {
-      await revokeAllAdminSessions(user.id);
-    }
-
-    let active = await countActiveAdminSessions(user.id);
-
-    if (active >= MAX_ADMIN_DEVICES) {
-      // Still full after prune: drop the oldest to allow this legitimate password login
-      await revokeOldestAdminSession(user.id);
-      active = await countActiveAdminSessions(user.id);
-    }
-
-    if (active >= MAX_ADMIN_DEVICES) {
-      await notifyAdminSecurity({
-        subject: "[HAMA] Admin login blocked — device limit (3)",
-        html: securityAlertHtml({
-          title: "Admin device limit reached",
-          email: user.email,
-          ip,
-          userAgent: userAgent || "(none)",
-          when: new Date().toISOString(),
-          extra: `Already ${active} active sessions (max ${MAX_ADMIN_DEVICES}).`,
-        }),
-        text: `Admin login blocked for ${user.email} from ${ip}.`,
-      });
-      return NextResponse.json(
-        {
-          error: `Maximum ${MAX_ADMIN_DEVICES} admin devices are still active. Sign in again with "Clear other devices" or wait for sessions to expire.`,
-          code: "DEVICE_LIMIT",
-          active,
-          max: MAX_ADMIN_DEVICES,
-          pruned,
-          canForceClear: true,
-        },
-        { status: 403 }
-      );
-    }
+    // Fresh start: always wipe previous device sessions on successful password.
+    // (Prevents permanent lockout when cookies expired but DB rows remained.)
+    await resetAllDeviceSessions(user.id);
 
     const sessionId = randomSessionId();
     const label = deviceLabelFromUa(userAgent);
 
-    await prisma.adminDeviceSession.create({
-      data: {
-        userId: user.id,
+    try {
+      await prisma.adminDeviceSession.create({
+        data: {
+          id: randomCuidLike(),
+          userId: user.id,
+          sessionId,
+          userAgent: userAgent.slice(0, 500) || null,
+          ip,
+          deviceLabel: label,
+        },
+      });
+    } catch (e) {
+      console.warn("[admin/login] prisma create failed, using SQL", e);
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "AdminDeviceSession" (id, "userId", "sessionId", "userAgent", ip, "deviceLabel", "lastActiveAt", "createdAt", "revokedAt")
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)`,
+        randomCuidLike(),
+        user.id,
         sessionId,
-        userAgent: userAgent.slice(0, 500) || null,
+        userAgent.slice(0, 500) || null,
         ip,
-        deviceLabel: label,
-      },
-    });
+        label
+      );
+    }
 
     return NextResponse.json({
       ok: true,
       sessionId,
       email: user.email,
-      active: active + 1,
+      active: 1,
       max: MAX_ADMIN_DEVICES,
-      pruned,
-      forced: forceClearDevices,
+      reset: true,
+      message: "Previous admin devices signed out. Fresh session created.",
     });
   } catch (err) {
     console.error("[admin/login]", err);

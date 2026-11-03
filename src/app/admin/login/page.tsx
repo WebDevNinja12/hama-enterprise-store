@@ -16,34 +16,42 @@ function AdminLoginForm() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showForceClear, setShowForceClear] = useState(false);
 
-  async function doLogin(forceClearDevices: boolean) {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setLoading(true);
     setError("");
     setInfo("");
 
     const em = email.trim().toLowerCase();
 
+    // Clear any stuck browser session cookies first
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {
+      /* ignore */
+    }
+
     let sessionId = "";
     try {
       const pre = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: em, password, forceClearDevices }),
+        credentials: "include",
+        body: JSON.stringify({ email: em, password }),
       });
       const data = await pre.json();
       if (!pre.ok) {
-        if (data.code === "DEVICE_LIMIT") {
-          setShowForceClear(true);
-          setError(
-            data.error ||
-              "Device limit reached. Use Clear other devices below if this is you."
-          );
-        } else if (data.code === "DEVICE_BLOCKED") {
+        if (data.code === "DEVICE_BLOCKED") {
           setError(data.error || "This device is blocked from admin access.");
         } else if (data.code === "LOCKED") {
           setError("Too many failed attempts. Wait 5 minutes and try again.");
+        } else if (data.code === "DEVICE_LIMIT") {
+          // Should not happen after reset fix — still try once more message
+          setError(
+            data.error ||
+              "Device limit error. Refresh the page and try again after deploy."
+          );
         } else {
           setError(data.error || "Invalid admin credentials.");
         }
@@ -51,14 +59,17 @@ function AdminLoginForm() {
         return;
       }
       sessionId = data.sessionId || "";
-      if (data.pruned > 0) {
-        setInfo(`Cleared ${data.pruned} expired device session(s).`);
-      }
-      if (data.forced) {
-        setInfo("Other admin devices were signed out.");
+      if (data.reset) {
+        setInfo("Signed out other devices. Starting a fresh admin session…");
       }
     } catch {
       setError("Could not reach server. Try again.");
+      setLoading(false);
+      return;
+    }
+
+    if (!sessionId) {
+      setError("Could not create admin device session. Try again.");
       setLoading(false);
       return;
     }
@@ -71,11 +82,9 @@ function AdminLoginForm() {
     });
 
     if (res?.error) {
-      if (res.error === "LOGIN_LOCKED" || String(res.error).includes("LOCKED")) {
-        setError("Too many failed attempts. Wait 5 minutes and try again.");
-      } else {
-        setError("Invalid admin credentials or device session expired.");
-      }
+      setError(
+        "Password ok but session failed. Clear cookies and try again: /clear-cookies"
+      );
       setLoading(false);
       return;
     }
@@ -84,7 +93,7 @@ function AdminLoginForm() {
       const me = await fetch("/api/auth/session", { credentials: "include" });
       const data = await me.json();
       if (data?.user?.role !== "ADMIN") {
-        setError("This account is not an administrator. Use the customer sign-in.");
+        setError("This account is not an administrator.");
         await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
         setLoading(false);
         return;
@@ -99,11 +108,6 @@ function AdminLoginForm() {
     router.refresh();
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    await doLogin(false);
-  }
-
   return (
     <div className="card w-full max-w-md p-8">
       <div className="mb-4 flex items-center gap-3">
@@ -113,7 +117,7 @@ function AdminLoginForm() {
         <div>
           <h1 className="text-xl font-bold text-[var(--heading)]">Admin sign in</h1>
           <p className="text-xs text-[var(--muted)]">
-            Staff only · max 3 devices · 5 min idle timeout
+            Fresh session each login · other devices signed out
           </p>
         </div>
       </div>
@@ -165,28 +169,19 @@ function AdminLoginForm() {
           disabled={loading}
           className="btn-primary w-full py-3 text-sm disabled:opacity-50"
         >
-          {loading ? "Verifying…" : "Sign in to admin"}
+          {loading ? "Signing in…" : "Sign in to admin"}
         </button>
       </form>
 
-      {showForceClear && (
-        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <p className="mb-3 text-xs text-amber-100/90">
-            Old device slots may still be reserved even if you are not signed in
-            elsewhere. This signs out every other admin device, then logs you in.
-          </p>
-          <button
-            type="button"
-            disabled={loading || !email || !password}
-            onClick={() => doLogin(true)}
-            className="w-full rounded-full bg-amber-500/20 px-4 py-2.5 text-sm font-semibold text-amber-200 ring-1 ring-amber-500/40 hover:bg-amber-500/30 disabled:opacity-50"
-          >
-            Clear other devices and sign in
-          </button>
-        </div>
-      )}
+      <p className="mt-4 text-center text-xs text-[var(--muted)]">
+        Stuck?{" "}
+        <Link href="/clear-cookies" className="text-cyan-400 hover:underline">
+          Clear cookies
+        </Link>{" "}
+        then try again.
+      </p>
 
-      <p className="mt-6 text-center text-xs text-[var(--muted)]">
+      <p className="mt-4 text-center text-xs text-[var(--muted)]">
         Customer?{" "}
         <Link href="/login" className="text-cyan-400 hover:underline">
           Use the public sign-in
