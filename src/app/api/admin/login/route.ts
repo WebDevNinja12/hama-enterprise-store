@@ -5,7 +5,6 @@ import {
   clientIpFromHeaders,
   deviceLabelFromUa,
   ensureAdminDeviceTables,
-  isDeviceBlocked,
 } from "@/lib/admin-devices";
 import {
   checkLoginAllowed,
@@ -18,30 +17,24 @@ function randomSessionId() {
   return randomBytes(24).toString("hex");
 }
 
-async function wipeDevices(userId: string) {
+async function wipeEverything() {
   try {
-    await prisma.adminDeviceSession.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await prisma.blockedAdminDevice.deleteMany({});
   } catch {
-    /* */
+    try {
+      await prisma.$executeRawUnsafe(`DELETE FROM "BlockedAdminDevice"`);
+    } catch {
+      /* */
+    }
   }
   try {
-    await prisma.$executeRawUnsafe(
-      `UPDATE "AdminDeviceSession" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "userId" = $1 AND "revokedAt" IS NULL`,
-      userId
-    );
+    await prisma.adminDeviceSession.deleteMany({});
   } catch {
-    /* */
-  }
-  try {
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM "AdminDeviceSession" WHERE "userId" = $1`,
-      userId
-    );
-  } catch {
-    /* */
+    try {
+      await prisma.$executeRawUnsafe(`DELETE FROM "AdminDeviceSession"`);
+    } catch {
+      /* */
+    }
   }
 }
 
@@ -71,15 +64,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (await isDeviceBlocked(ip, userAgent || null).catch(() => false)) {
-      return NextResponse.json(
-        {
-          error: "This device or network is blocked from admin access.",
-          code: "DEVICE_BLOCKED",
-        },
-        { status: 403 }
-      );
-    }
+    // Do NOT check isDeviceBlocked here — unblocks happen on successful password
 
     const user = await prisma.user.findUnique({
       where: { email },
@@ -105,8 +90,8 @@ export async function POST(req: NextRequest) {
 
     await clearLoginFailures(limitKey);
 
-    // Always start fresh — no device-limit lockout
-    await wipeDevices(user.id);
+    // Fresh start: clear block list + every device session
+    await wipeEverything();
 
     const sessionId = randomSessionId();
     const label = deviceLabelFromUa(userAgent);
@@ -146,7 +131,8 @@ export async function POST(req: NextRequest) {
       email: user.email,
       active: 1,
       reset: true,
-      message: "All previous admin sessions cleared.",
+      unblocked: true,
+      message: "All blocks and device sessions cleared. Fresh session created.",
     });
   } catch (err) {
     console.error("[admin/login]", err);
