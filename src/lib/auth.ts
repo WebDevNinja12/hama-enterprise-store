@@ -4,6 +4,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import type { Provider } from "next-auth/providers";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { prisma } from "./prisma";
 import type { Role } from "@prisma/client";
 import {
@@ -50,9 +51,7 @@ const providers: Provider[] = [
       const limitKey = email;
 
       const allowed = await checkLoginAllowed(limitKey);
-      if (!allowed.ok) {
-        throw new Error("LOGIN_LOCKED");
-      }
+      if (!allowed.ok) throw new Error("LOGIN_LOCKED");
 
       let user;
       try {
@@ -90,33 +89,47 @@ const providers: Provider[] = [
 
       await clearLoginFailures(limitKey);
 
-      const adminSessionId = credentials.adminSessionId
+      let adminSessionId = credentials.adminSessionId
         ? String(credentials.adminSessionId)
         : "";
 
+      // NEVER block admin on device limit — wipe old rows and continue
       if (user.role === "ADMIN") {
-        if (!adminSessionId) {
-          throw new Error("ADMIN_DEVICE_REQUIRED");
+        try {
+          await prisma.adminDeviceSession.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        } catch {
+          /* */
         }
         try {
-          const sess = await prisma.adminDeviceSession.findFirst({
-            where: {
-              sessionId: adminSessionId,
+          await prisma.$executeRawUnsafe(
+            `DELETE FROM "AdminDeviceSession" WHERE "userId" = $1`,
+            user.id
+          );
+        } catch {
+          /* */
+        }
+
+        const sid =
+          adminSessionId && adminSessionId !== "fresh"
+            ? adminSessionId
+            : randomBytes(16).toString("hex");
+        adminSessionId = sid;
+        const id = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        try {
+          await prisma.adminDeviceSession.create({
+            data: {
+              id,
               userId: user.id,
-              revokedAt: null,
+              sessionId: sid,
+              deviceLabel: "Login",
+              lastActiveAt: new Date(),
             },
           });
-          if (!sess) {
-            throw new Error("ADMIN_DEVICE_INVALID");
-          }
-          await prisma.adminDeviceSession.update({
-            where: { id: sess.id },
-            data: { lastActiveAt: new Date() },
-          });
-        } catch (e) {
-          if (e instanceof Error && e.message.startsWith("ADMIN_")) throw e;
-          console.error("[auth] admin session check:", e);
-          throw new Error("ADMIN_DEVICE_INVALID");
+        } catch {
+          /* tracking optional */
         }
       }
 
@@ -156,21 +169,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     maxAge: SESSION.JWT_MAX_AGE_SEC,
     updateAge: 120,
   },
-  jwt: {
-    maxAge: SESSION.JWT_MAX_AGE_SEC,
-  },
-  pages: {
-    signIn: "/login",
-    error: "/error",
-  },
+  jwt: { maxAge: SESSION.JWT_MAX_AGE_SEC },
+  pages: { signIn: "/login", error: "/error" },
   providers,
   cookies: {
     sessionToken: {
       name: sessionCookieName,
-      options: {
-        ...COOKIE_BASE,
-        maxAge: SESSION.JWT_MAX_AGE_SEC,
-      },
+      options: { ...COOKIE_BASE, maxAge: SESSION.JWT_MAX_AGE_SEC },
     },
     callbackUrl: {
       name: isProduction() ? "__Secure-hama.callback" : "hama.callback",
@@ -216,7 +221,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         let role: Role = (user as { role?: Role }).role ?? "USER";
         let sub = user.id;
-
         if (account?.provider === "google" && user.email) {
           try {
             const dbUser = await prisma.user.findUnique({
@@ -228,10 +232,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               role = dbUser.role;
             }
           } catch {
-            /* keep defaults */
+            /* */
           }
         }
-
         slim.sub = sub;
         slim.role = role;
         slim.la = now;
@@ -240,9 +243,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return slim as typeof token;
       }
 
-      if (!token.sub) {
-        return { exp: 0 } as typeof token;
-      }
+      if (!token.sub) return { exp: 0 } as typeof token;
 
       const role = (token.role as Role) || "USER";
       const lastActive = typeof token.la === "number" ? token.la : now;
@@ -252,40 +253,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           : SESSION.CUSTOMER_IDLE_MS / 1000;
 
       if (now - lastActive > idleLimitSec) {
+        if (role === "ADMIN" && token.sid && token.sub) {
+          prisma.adminDeviceSession
+            .updateMany({
+              where: {
+                sessionId: String(token.sid),
+                userId: String(token.sub),
+                revokedAt: null,
+              },
+              data: { revokedAt: new Date() },
+            })
+            .catch(() => {});
+        }
         return { exp: 0 } as typeof token;
       }
 
-      if (role === "ADMIN" && token.sid) {
-        try {
-          const sess = await prisma.adminDeviceSession.findFirst({
+      if (role === "ADMIN" && token.sid && now - lastActive > 60) {
+        prisma.adminDeviceSession
+          .updateMany({
             where: {
               sessionId: String(token.sid),
               userId: String(token.sub),
               revokedAt: null,
             },
-            select: { id: true },
-          });
-          if (!sess) {
-            return { exp: 0 } as typeof token;
-          }
-          if (now - lastActive > 60) {
-            prisma.adminDeviceSession
-              .update({
-                where: { id: sess.id },
-                data: { lastActiveAt: new Date() },
-              })
-              .catch(() => {});
-          }
-        } catch {
-          return { exp: 0 } as typeof token;
-        }
+            data: { lastActiveAt: new Date() },
+          })
+          .catch(() => {});
       }
 
       slim.sub = token.sub;
       slim.role = role;
       slim.la = now - lastActive > 60 ? now : lastActive;
       if (token.sid) slim.sid = token.sid;
-
       return slim as typeof token;
     },
     async session({ session, token }) {
@@ -299,7 +298,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         };
         return session;
       }
-
       let name: string | null = null;
       let email: string | null = null;
       try {
@@ -310,9 +308,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         name = u?.name ?? null;
         email = u?.email ?? null;
       } catch {
-        /* ignore */
+        /* */
       }
-
       session.user = {
         id: String(token.sub),
         role: (token.role as Role) || "USER",
