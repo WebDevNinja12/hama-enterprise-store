@@ -5,6 +5,7 @@ import {
   clientIpFromHeaders,
   deviceLabelFromUa,
   ensureAdminDeviceTables,
+  clearAllAdminDeviceData,
 } from "@/lib/admin-devices";
 import {
   checkLoginAllowed,
@@ -12,31 +13,6 @@ import {
   clearLoginFailures,
 } from "@/lib/login-rate-limit";
 import { randomBytes } from "crypto";
-
-function randomSessionId() {
-  return randomBytes(24).toString("hex");
-}
-
-async function wipeEverything() {
-  try {
-    await prisma.blockedAdminDevice.deleteMany({});
-  } catch {
-    try {
-      await prisma.$executeRawUnsafe(`DELETE FROM "BlockedAdminDevice"`);
-    } catch {
-      /* */
-    }
-  }
-  try {
-    await prisma.adminDeviceSession.deleteMany({});
-  } catch {
-    try {
-      await prisma.$executeRawUnsafe(`DELETE FROM "AdminDeviceSession"`);
-    } catch {
-      /* */
-    }
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,8 +40,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Do NOT check isDeviceBlocked here — unblocks happen on successful password
-
     const user = await prisma.user.findUnique({
       where: { email },
       select: { id: true, email: true, password: true, role: true, name: true },
@@ -90,10 +64,12 @@ export async function POST(req: NextRequest) {
 
     await clearLoginFailures(limitKey);
 
-    // Fresh start: clear block list + every device session
-    await wipeEverything();
+    // Optional: full reset of block list + sessions (no limit ever applied)
+    if (body.resetDevices !== false) {
+      await clearAllAdminDeviceData();
+    }
 
-    const sessionId = randomSessionId();
+    const sessionId = randomBytes(24).toString("hex");
     const label = deviceLabelFromUa(userAgent);
     const id = `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
@@ -109,30 +85,16 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch {
-      try {
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO "AdminDeviceSession" (id, "userId", "sessionId", "userAgent", ip, "deviceLabel", "lastActiveAt", "createdAt")
-           VALUES ($1,$2,$3,$4,$5,$6,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,
-          id,
-          user.id,
-          sessionId,
-          userAgent.slice(0, 500) || null,
-          ip,
-          label
-        );
-      } catch (e) {
-        console.warn("[admin/login] device row optional", e);
-      }
+      /* optional tracking */
     }
 
     return NextResponse.json({
       ok: true,
       sessionId,
       email: user.email,
-      active: 1,
+      unlimited: true,
       reset: true,
-      unblocked: true,
-      message: "All blocks and device sessions cleared. Fresh session created.",
+      message: "Admin session ready. No device limit.",
     });
   } catch (err) {
     console.error("[admin/login]", err);

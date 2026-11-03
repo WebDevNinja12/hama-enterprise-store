@@ -11,8 +11,11 @@ export const SESSION = {
   JWT_MAX_AGE_SEC: 30 * 60,
   /** Update lastActive at most this often */
   ACTIVITY_TOUCH_MS: 30 * 1000,
-  /** Max concurrent admin devices (browsers) */
-  MAX_ADMIN_DEVICES: 3,
+  /**
+   * Max concurrent admin devices.
+   * Unlimited in practice (no lockout). Kept for display only.
+   */
+  MAX_ADMIN_DEVICES: 999999,
 } as const;
 
 export const COOKIE_NAMES = {

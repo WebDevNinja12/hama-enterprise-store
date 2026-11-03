@@ -37,33 +37,22 @@ function AdminLoginForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: em, password }),
+        body: JSON.stringify({ email: em, password, resetDevices: true }),
       });
       const data = await pre.json();
       if (!pre.ok) {
-        if (data.code === "DEVICE_BLOCKED") {
-          setError(data.error || "This device is blocked.");
-          setLoading(false);
-          return;
-        }
         if (data.code === "LOCKED") {
           setError("Too many failed attempts. Wait 5 minutes.");
-          setLoading(false);
-          return;
+        } else {
+          setError(data.error || "Invalid admin credentials.");
         }
-        if (data.code === "INVALID") {
-          setError("Invalid admin credentials.");
-          setLoading(false);
-          return;
-        }
-        // Legacy DEVICE_LIMIT ignored — credentials path still runs
-        setInfo("Resetting sessions…");
-      } else {
-        sessionId = data.sessionId || "";
-        if (data.reset) setInfo("Previous devices cleared.");
+        setLoading(false);
+        return;
       }
+      sessionId = data.sessionId || "";
+      setInfo("Signed in — device limit disabled.");
     } catch {
-      setInfo("Continuing sign-in…");
+      setInfo("Signing in…");
     }
 
     const res = await signIn("credentials", {
@@ -74,9 +63,7 @@ function AdminLoginForm() {
     });
 
     if (res?.error) {
-      setError(
-        "Sign-in failed. Check password, or open /clear-cookies and retry."
-      );
+      setError("Sign-in failed. Check password or clear cookies.");
       setLoading(false);
       return;
     }
@@ -109,14 +96,14 @@ function AdminLoginForm() {
         <div>
           <h1 className="text-xl font-bold text-[var(--heading)]">Admin sign in</h1>
           <p className="text-xs text-[var(--muted)]">
-            Password login always allowed · devices reset each sign-in
+            Unlimited devices · 5 min idle timeout
           </p>
         </div>
       </div>
 
       {reason === "idle" && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Session expired (5 min idle). Device was deactivated. Sign in again.
+          Session expired (5 min idle). Sign in again.
         </div>
       )}
 

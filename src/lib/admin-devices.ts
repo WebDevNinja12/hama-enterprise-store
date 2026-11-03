@@ -2,13 +2,8 @@ import { prisma } from "./prisma";
 import { SESSION } from "./session-config";
 import { sendEmail } from "./email";
 
+/** Unlimited — no login lockout. Value kept for UI only. */
 export const MAX_ADMIN_DEVICES = SESSION.MAX_ADMIN_DEVICES;
-
-/** Sessions with no activity longer than this are treated as dead (not counted). */
-export const STALE_ADMIN_SESSION_MS = Math.max(
-  SESSION.ADMIN_IDLE_MS * 2,
-  SESSION.JWT_MAX_AGE_SEC * 1000
-);
 
 export function clientIpFromHeaders(h: Headers): string {
   return (
@@ -29,7 +24,6 @@ export function deviceLabelFromUa(ua: string | null): string {
   return s.slice(0, 80);
 }
 
-/** Ensure admin device tables exist on fresh DBs. */
 export async function ensureAdminDeviceTables() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "AdminDeviceSession" (
@@ -60,60 +54,30 @@ export async function ensureAdminDeviceTables() {
   );
 }
 
-export async function isDeviceBlocked(ip: string, userAgent: string | null) {
-  const rows = await prisma.blockedAdminDevice.findMany({
-    take: 200,
-    orderBy: { createdAt: "desc" },
-  });
-  return rows.some((r) => {
-    if (r.ip && r.ip === ip) return true;
-    if (r.userAgent && userAgent && r.userAgent === userAgent) return true;
-    return false;
-  });
+/** Always false — device block list no longer blocks login (admin reset). */
+export async function isDeviceBlocked(_ip: string, _userAgent: string | null) {
+  return false;
 }
 
-/**
- * Mark sessions as revoked when lastActiveAt is older than JWT/idle window.
- * Fixes lockout when cookies expired but DB rows were never revoked.
- */
-export async function pruneStaleAdminSessions(userId: string): Promise<number> {
-  const cutoff = new Date(Date.now() - STALE_ADMIN_SESSION_MS);
-  const res = await prisma.adminDeviceSession.updateMany({
-    where: {
-      userId,
-      revokedAt: null,
-      lastActiveAt: { lt: cutoff },
-    },
-    data: { revokedAt: new Date() },
-  });
-  return res.count;
-}
-
-export async function countActiveAdminSessions(userId: string) {
-  return prisma.adminDeviceSession.count({
-    where: { userId, revokedAt: null },
-  });
-}
-
-export async function revokeAllAdminSessions(userId: string) {
-  return prisma.adminDeviceSession.updateMany({
-    where: { userId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-}
-
-/** Free one slot by revoking the least-recently-active session. */
-export async function revokeOldestAdminSession(userId: string) {
-  const oldest = await prisma.adminDeviceSession.findFirst({
-    where: { userId, revokedAt: null },
-    orderBy: { lastActiveAt: "asc" },
-  });
-  if (!oldest) return null;
-  await prisma.adminDeviceSession.update({
-    where: { id: oldest.id },
-    data: { revokedAt: new Date() },
-  });
-  return oldest;
+export async function clearAllAdminDeviceData() {
+  try {
+    await prisma.blockedAdminDevice.deleteMany({});
+  } catch {
+    try {
+      await prisma.$executeRawUnsafe(`DELETE FROM "BlockedAdminDevice"`);
+    } catch {
+      /* */
+    }
+  }
+  try {
+    await prisma.adminDeviceSession.deleteMany({});
+  } catch {
+    try {
+      await prisma.$executeRawUnsafe(`DELETE FROM "AdminDeviceSession"`);
+    } catch {
+      /* */
+    }
+  }
 }
 
 export async function notifyAdminSecurity(opts: {
@@ -149,6 +113,5 @@ export function securityAlertHtml(details: {
       <tr><td style="padding:6px 0;color:#64748b;">Time</td><td>${details.when}</td></tr>
       ${details.extra ? `<tr><td style="padding:6px 0;color:#64748b;">Note</td><td>${details.extra}</td></tr>` : ""}
     </table>
-    <p style="color:#64748b;font-size:12px;margin-top:16px;">Review devices in Admin → Security. Stale sessions auto-expire after inactivity.</p>
   </div>`;
 }
