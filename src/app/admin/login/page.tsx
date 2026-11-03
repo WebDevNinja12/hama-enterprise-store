@@ -25,11 +25,10 @@ function AdminLoginForm() {
 
     const em = email.trim().toLowerCase();
 
-    // Clear any stuck browser session cookies first
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } catch {
-      /* ignore */
+      /* */
     }
 
     let sessionId = "";
@@ -43,47 +42,40 @@ function AdminLoginForm() {
       const data = await pre.json();
       if (!pre.ok) {
         if (data.code === "DEVICE_BLOCKED") {
-          setError(data.error || "This device is blocked from admin access.");
-        } else if (data.code === "LOCKED") {
-          setError("Too many failed attempts. Wait 5 minutes and try again.");
-        } else if (data.code === "DEVICE_LIMIT") {
-          // Should not happen after reset fix — still try once more message
-          setError(
-            data.error ||
-              "Device limit error. Refresh the page and try again after deploy."
-          );
-        } else {
-          setError(data.error || "Invalid admin credentials.");
+          setError(data.error || "This device is blocked.");
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-        return;
-      }
-      sessionId = data.sessionId || "";
-      if (data.reset) {
-        setInfo("Signed out other devices. Starting a fresh admin session…");
+        if (data.code === "LOCKED") {
+          setError("Too many failed attempts. Wait 5 minutes.");
+          setLoading(false);
+          return;
+        }
+        if (data.code === "INVALID") {
+          setError("Invalid admin credentials.");
+          setLoading(false);
+          return;
+        }
+        // Legacy DEVICE_LIMIT ignored — credentials path still runs
+        setInfo("Resetting sessions…");
+      } else {
+        sessionId = data.sessionId || "";
+        if (data.reset) setInfo("Previous devices cleared.");
       }
     } catch {
-      setError("Could not reach server. Try again.");
-      setLoading(false);
-      return;
-    }
-
-    if (!sessionId) {
-      setError("Could not create admin device session. Try again.");
-      setLoading(false);
-      return;
+      setInfo("Continuing sign-in…");
     }
 
     const res = await signIn("credentials", {
       email: em,
       password,
-      adminSessionId: sessionId,
+      adminSessionId: sessionId || "fresh",
       redirect: false,
     });
 
     if (res?.error) {
       setError(
-        "Password ok but session failed. Clear cookies and try again: /clear-cookies"
+        "Sign-in failed. Check password, or open /clear-cookies and retry."
       );
       setLoading(false);
       return;
@@ -117,14 +109,14 @@ function AdminLoginForm() {
         <div>
           <h1 className="text-xl font-bold text-[var(--heading)]">Admin sign in</h1>
           <p className="text-xs text-[var(--muted)]">
-            Fresh session each login · other devices signed out
+            Password login always allowed · devices reset each sign-in
           </p>
         </div>
       </div>
 
       {reason === "idle" && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Admin session expired due to inactivity (5 min). Sign in again.
+          Session expired (5 min idle). Device was deactivated. Sign in again.
         </div>
       )}
 
@@ -141,9 +133,7 @@ function AdminLoginForm() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-1.5 block text-xs text-[var(--muted)]">
-            Admin email
-          </label>
+          <label className="mb-1.5 block text-xs text-[var(--muted)]">Admin email</label>
           <input
             type="email"
             className="input"
@@ -154,9 +144,7 @@ function AdminLoginForm() {
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs text-[var(--muted)]">
-            Password
-          </label>
+          <label className="mb-1.5 block text-xs text-[var(--muted)]">Password</label>
           <PasswordInput
             value={password}
             onChange={setPassword}
@@ -177,14 +165,12 @@ function AdminLoginForm() {
         Stuck?{" "}
         <Link href="/clear-cookies" className="text-cyan-400 hover:underline">
           Clear cookies
-        </Link>{" "}
-        then try again.
+        </Link>
       </p>
-
       <p className="mt-4 text-center text-xs text-[var(--muted)]">
         Customer?{" "}
         <Link href="/login" className="text-cyan-400 hover:underline">
-          Use the public sign-in
+          Public sign-in
         </Link>
       </p>
     </div>
