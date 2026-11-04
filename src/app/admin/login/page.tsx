@@ -50,7 +50,7 @@ function AdminLoginForm() {
         return;
       }
       sessionId = data.sessionId || "";
-      setInfo("Signed in — device limit disabled.");
+      setInfo("Signing in…");
     } catch {
       setInfo("Signing in…");
     }
@@ -83,6 +83,19 @@ function AdminLoginForm() {
       return;
     }
 
+    // First login may require setting a permanent password
+    try {
+      const pw = await fetch("/api/admin/set-password", { credentials: "include" });
+      const pwData = await pw.json();
+      if (pwData.mustChangePassword) {
+        router.replace("/admin/set-password");
+        router.refresh();
+        return;
+      }
+    } catch {
+      /* */
+    }
+
     router.replace("/admin");
     router.refresh();
   }
@@ -96,7 +109,7 @@ function AdminLoginForm() {
         <div>
           <h1 className="text-xl font-bold text-[var(--heading)]">Admin sign in</h1>
           <p className="text-xs text-[var(--muted)]">
-            Unlimited devices · 5 min idle timeout
+            Use hamaenterprisestore01@gmail.com · set password on first login
           </p>
         </div>
       </div>
@@ -126,6 +139,7 @@ function AdminLoginForm() {
             className="input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="hamaenterprisestore01@gmail.com"
             required
             autoComplete="username"
           />
