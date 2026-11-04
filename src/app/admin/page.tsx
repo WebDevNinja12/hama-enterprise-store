@@ -1,31 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Package,
   ShoppingBag,
   Image as ImageIcon,
   Video,
   Shield,
+  Settings,
   Database,
-  CheckCircle2,
 } from "lucide-react";
+import { useState } from "react";
 
 export default function AdminHomePage() {
   const { data: session, status } = useSession();
-  const router = useRouter();
   const [schemaMsg, setSchemaMsg] = useState("");
   const [schemaBusy, setSchemaBusy] = useState(false);
-
-  useEffect(() => {
-    if (status === "unauthenticated") router.push("/login");
-    if (status === "authenticated" && session?.user?.role !== "ADMIN") {
-      router.push("/account");
-    }
-  }, [status, session, router]);
 
   async function ensureSchema() {
     setSchemaBusy(true);
@@ -33,10 +24,9 @@ export default function AdminHomePage() {
     try {
       const res = await fetch("/api/admin/ensure-schema", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      setSchemaMsg(data.message || "Schema ready");
-    } catch (err) {
-      setSchemaMsg(err instanceof Error ? err.message : "Failed");
+      setSchemaMsg(data.message || data.error || (res.ok ? "Schema OK" : "Failed"));
+    } catch {
+      setSchemaMsg("Request failed");
     } finally {
       setSchemaBusy(false);
     }
@@ -76,9 +66,15 @@ export default function AdminHomePage() {
       icon: Video,
     },
     {
+      href: "/admin/settings",
+      title: "Settings",
+      desc: "Change admin password",
+      icon: Settings,
+    },
+    {
       href: "/admin/security",
       title: "Security",
-      desc: "Devices (max 3), revoke sessions, block IPs",
+      desc: "Sessions, revoke devices, block list",
       icon: Shield,
     },
   ];
@@ -91,13 +87,19 @@ export default function AdminHomePage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-[var(--heading)]">Admin panel</h1>
-          <p className="text-sm text-[var(--muted)]">HAMA ENTERPRISE NG store controls</p>
+          <p className="text-sm text-[var(--muted)]">
+            Signed in as {session.user.email} · HAMA ENTERPRISE NG
+          </p>
         </div>
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {links.map((l) => (
-          <Link key={l.href} href={l.href} className="card p-5 transition hover:border-cyan-500/40">
+          <Link
+            key={l.href}
+            href={l.href}
+            className="card p-5 transition hover:border-cyan-500/40"
+          >
             <l.icon className="mb-3 h-6 w-6 text-cyan-400" />
             <p className="font-semibold text-[var(--heading)]">{l.title}</p>
             <p className="mt-1 text-xs text-[var(--muted)]">{l.desc}</p>
@@ -118,18 +120,15 @@ export default function AdminHomePage() {
           </div>
           <button
             type="button"
-            onClick={ensureSchema}
             disabled={schemaBusy}
-            className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+            onClick={ensureSchema}
+            className="rounded-full bg-cyan-500/15 px-4 py-2 text-sm text-cyan-300 ring-1 ring-cyan-500/30 disabled:opacity-50"
           >
-            {schemaBusy ? "Updating..." : "Push schema (imageUrl)"}
+            {schemaBusy ? "Running…" : "Ensure schema"}
           </button>
         </div>
         {schemaMsg && (
-          <p className="mt-3 flex items-center gap-2 text-sm text-cyan-400">
-            <CheckCircle2 className="h-4 w-4" />
-            {schemaMsg}
-          </p>
+          <p className="mt-3 text-xs text-[var(--muted)]">{schemaMsg}</p>
         )}
       </div>
     </div>
