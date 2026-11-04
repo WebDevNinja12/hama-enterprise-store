@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -80,6 +79,65 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+/** Active admin browser/device sessions. */
+model AdminDeviceSession {
+  id           String    @id @default(cuid())
+  userId       String
+  sessionId    String    @unique
+  userAgent    String?   @db.Text
+  ip           String?
+  deviceLabel  String?
+  lastActiveAt DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+/** Devices/IPs blocked from admin login. */
+model BlockedAdminDevice {
+  id        String   @id @default(cuid())
+  ip        String?
+  userAgent String?  @db.Text
+  reason    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([ip])
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  description String      @db.Text
+  price       Decimal     @db.Decimal(10, 2)
+  compareAt   Decimal?    @db.Decimal(10, 2)
+  sku         String      @unique
+  stock       Int         @default(0)
+  minStock    Int         @default(5)
+  images      String[]
+  featured    Boolean     @default(false)
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  cartItems   CartItem[]
+  reviews     Review[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
 model StoreProduct {
   id          String   @id @default(cuid())
   name        String
@@ -90,9 +148,9 @@ model StoreProduct {
   category    String
   brand       String   @default("HAMA")
   emoji       String   @default("📦")
-  imageUrl    String?
-  videoUrl    String?
-  posterUrl   String?
+  imageUrl    String?  @db.Text
+  videoUrl    String?  @db.Text
+  posterUrl   String?  @db.Text
   stock       Int      @default(0)
   rating      Float    @default(5)
   published   Boolean  @default(true)
@@ -100,17 +158,29 @@ model StoreProduct {
   updatedAt   DateTime @updatedAt
 }
 
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int      @default(1)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+
 model Order {
   id               String      @id @default(cuid())
   orderNumber      String      @unique
   userId           String?
-  user             User?       @relation(fields: [userId], references: [id])
   customerEmail    String
   customerPhone    String?
   status           OrderStatus @default(PENDING)
   subtotal         Decimal     @db.Decimal(10, 2)
-  shipping         Decimal     @default(0) @db.Decimal(10, 2)
-  tax              Decimal     @default(0) @db.Decimal(10, 2)
+  shipping         Decimal     @db.Decimal(10, 2) @default(0)
+  tax              Decimal     @db.Decimal(10, 2) @default(0)
   total            Decimal     @db.Decimal(10, 2)
   shippingName     String
   shippingAddress  String
@@ -121,79 +191,58 @@ model Order {
   paymentReference String?
   paymentIntentId  String?
   stripeSessionId  String?
-  notes            String?     @db.Text
+  notes            String?
   items            OrderItem[]
+  user             User?       @relation(fields: [userId], references: [id])
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 }
 
 model OrderItem {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   orderId     String
-  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId   String?
   productName String
   productSlug String?
   quantity    Int
-  price       Decimal @db.Decimal(10, 2)
-}
-
-model CartItem {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  quantity  Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, productId])
+  price       Decimal  @db.Decimal(10, 2)
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id])
 }
 
 model Review {
   id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
   rating    Int
   comment   String?  @db.Text
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
 }
 
-model GalleryItem {
-  id          String    @id @default(cuid())
-  type        MediaType
-  url         String
-  posterUrl   String?
-  title       String?
-  narration   String?   @db.Text
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+model GalleryMedia {
+  id        String    @id @default(cuid())
+  title     String
+  type      MediaType
+  url       String    @db.Text
+  poster    String?   @db.Text
+  narration String?   @db.Text
+  published Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
-model AdminDeviceSession {
-  id           String    @id @default(cuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessionId    String    @unique
-  userAgent    String?
-  ip           String?
-  deviceLabel  String?
-  lastActiveAt DateTime  @default(now())
-  createdAt    DateTime  @default(now())
-  revokedAt    DateTime?
-
-  @@index([userId, revokedAt])
-}
-
-model BlockedAdminDevice {
+model SiteMedia {
   id        String   @id @default(cuid())
-  ip        String?
-  userAgent String?
-  reason    String?
-  createdBy String?
+  key       String   @unique
+  title     String?
+  url       String   @db.Text
+  poster    String?  @db.Text
+  published Boolean  @default(true)
   createdAt DateTime @default(now())
-
-  @@index([ip])
+  updatedAt DateTime @updatedAt
 }
