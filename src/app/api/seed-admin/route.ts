@@ -14,8 +14,7 @@ function setupAllowed(req: Request): boolean {
   if (process.env.ALLOW_SETUP === "true") {
     const secret = process.env.ADMIN_BOOTSTRAP_SECRET;
     if (!secret) return false;
-    const hdr = req.headers.get("x-bootstrap-secret");
-    return hdr === secret;
+    return req.headers.get("x-bootstrap-secret") === secret;
   }
   const secret = process.env.ADMIN_BOOTSTRAP_SECRET;
   if (secret) {
@@ -24,24 +23,36 @@ function setupAllowed(req: Request): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
+async function ensureMustChangeColumn() {
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "mustChangePassword" BOOLEAN NOT NULL DEFAULT false`
+    );
+  } catch {
+    /* column may already exist */
+  }
+}
+
 export async function POST(req: Request) {
   if (!setupAllowed(req)) {
     return NextResponse.json(
       {
         error:
-          "Seed admin is disabled. Set ALLOW_SETUP=true and ADMIN_BOOTSTRAP_SECRET only for emergency setup, then remove them.",
+          "Seed admin is disabled. Set ALLOW_SETUP=true and ADMIN_BOOTSTRAP_SECRET, then remove them after setup.",
       },
       { status: 403 }
     );
   }
 
   try {
+    await ensureMustChangeColumn();
+
+    // Temporary password only if ADMIN_SEED_PASSWORD is set; otherwise random one-time
     const password =
       process.env.ADMIN_SEED_PASSWORD ||
-      `Hama-${Math.random().toString(36).slice(2, 10)}!9`;
+      `Setup-${Math.random().toString(36).slice(2, 10)}!A1`;
     const hashed = await bcrypt.hash(password, 12);
 
-    // Prefer existing row: new email, then legacy emails, then any ADMIN
     let existing = await prisma.user.findUnique({
       where: { email: ADMIN_EMAIL },
     });
@@ -54,9 +65,7 @@ export async function POST(req: Request) {
     }
 
     if (!existing) {
-      existing = await prisma.user.findFirst({
-        where: { role: "ADMIN" },
-      });
+      existing = await prisma.user.findFirst({ where: { role: "ADMIN" } });
     }
 
     if (existing) {
@@ -68,10 +77,10 @@ export async function POST(req: Request) {
           password: hashed,
           name: existing.name || "HAMA Admin",
           emailVerified: existing.emailVerified ?? new Date(),
+          mustChangePassword: true,
         },
       });
 
-      // Demote other accounts that still claim ADMIN (except this one)
       await prisma.user.updateMany({
         where: { role: "ADMIN", id: { not: existing.id } },
         data: { role: "USER" },
@@ -80,12 +89,12 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         message:
-          "Admin updated (email + password). Change password after login. Disable ALLOW_SETUP.",
+          "Admin ready. Sign in with the email below, then you will be asked to set a new password.",
         email: ADMIN_EMAIL,
-        password,
+        temporaryPassword: password,
+        mustChangePassword: true,
         created: false,
         updated: true,
-        previousEmail: existing.email,
       });
     }
 
@@ -96,14 +105,17 @@ export async function POST(req: Request) {
         password: hashed,
         role: "ADMIN",
         emailVerified: new Date(),
+        mustChangePassword: true,
       },
     });
 
     return NextResponse.json({
       ok: true,
-      message: "Admin created. Change password after login. Disable ALLOW_SETUP.",
+      message:
+        "Admin created. Sign in, then set your permanent password when prompted.",
       email: ADMIN_EMAIL,
-      password,
+      temporaryPassword: password,
+      mustChangePassword: true,
       created: true,
     });
   } catch (err) {

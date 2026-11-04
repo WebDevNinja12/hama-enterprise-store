@@ -9,10 +9,13 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isLogin =
-    pathname === "/admin/login" || pathname?.startsWith("/admin/login/");
+  const isPublic =
+    pathname === "/admin/login" ||
+    pathname?.startsWith("/admin/login/") ||
+    pathname === "/admin/set-password" ||
+    pathname?.startsWith("/admin/set-password/");
 
-  if (isLogin) {
+  if (isPublic) {
     return <>{children}</>;
   }
 
