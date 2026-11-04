@@ -1,24 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, Trash2, Image as ImageIcon, Film } from "lucide-react";
+import MediaUploader from "@/components/MediaUploader";
+import SafeVideo from "@/components/SafeVideo";
 
-type MediaItem = {
+type Item = {
   id: string;
   title: string;
   type: "IMAGE" | "VIDEO";
   url: string;
-  poster: string | null;
-  narration: string | null;
+  poster?: string | null;
+  narration?: string | null;
   published: boolean;
   sortOrder: number;
 };
 
-const MAX_FILE_BYTES = 2.5 * 1024 * 1024;
-
 export default function AdminGalleryPage() {
-  const [items, setItems] = useState<MediaItem[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -31,73 +31,40 @@ export default function AdminGalleryPage() {
     published: true,
   });
 
-  async function loadItems() {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/gallery?admin=1");
+      const res = await fetch("/api/gallery?admin=1", { credentials: "include" });
       const data = await res.json();
-      setItems(data.items || []);
+      setItems(Array.isArray(data.items) ? data.items : []);
     } catch {
       setError("Failed to load gallery items");
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadItems();
-  }, []);
-
-  function readFileAsDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (file.size > MAX_FILE_BYTES) {
-        reject(
-          new Error(
-            "File too large (max ~2.5MB). Host online and paste the URL instead."
-          )
-        );
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("Could not read file"));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function onPickFile(
-    e: React.ChangeEvent<HTMLInputElement>,
-    field: "url" | "poster"
-  ) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError("");
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      if (field === "url") {
-        if (file.type.startsWith("video/")) {
-          setForm((f) => ({ ...f, type: "VIDEO", url: dataUrl }));
-        } else {
-          setForm((f) => ({ ...f, type: "IMAGE", url: dataUrl }));
-        }
-      } else {
-        setForm((f) => ({ ...f, poster: dataUrl }));
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    }
-  }
+  }, [loadItems]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
     try {
+      if (!form.url.startsWith("https://")) {
+        throw new Error("Upload a file to Blob or paste an https:// URL");
+      }
+      if (form.url.startsWith("data:")) {
+        throw new Error("Base64 data URLs are not allowed. Use Blob upload.");
+      }
       const res = await fetch("/api/gallery", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          title: form.title,
+          title: form.title.trim() || "Gallery item",
           type: form.type,
           url: form.url,
           poster: form.poster || null,
@@ -128,6 +95,7 @@ export default function AdminGalleryPage() {
     try {
       const res = await fetch(`/api/gallery?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
+        credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Delete failed");
@@ -138,161 +106,128 @@ export default function AdminGalleryPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
-      <Link
-        href="/admin"
-        className="mb-2 inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline"
-      >
-        <ArrowLeft className="h-3 w-3" /> Admin
-      </Link>
-      <h1 className="mb-2 text-2xl font-bold text-[var(--heading)]">
-        Gallery media
-      </h1>
-      <p className="mb-6 text-sm text-[var(--muted)]">
-        Manage media for the main website gallery. Narration is shown to visitors
-        on{" "}
-        <a
-          href="https://hama-enterprise-ng.vercel.app/gallery.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-cyan-400 hover:underline"
+    <div className="space-y-8">
+      <div>
+        <Link
+          href="/admin"
+          className="mb-3 inline-flex items-center gap-1 text-sm text-cyan-400 hover:underline"
         >
-          hama-enterprise-ng gallery
-        </a>
-        .
-      </p>
+          <ArrowLeft className="h-3 w-3" /> Admin
+        </Link>
+        <h1 className="text-2xl font-bold text-[var(--heading)]">Gallery media</h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Upload images/videos to Vercel Blob (https URLs only). Videos must be MP4.
+        </p>
+      </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleAdd} className="card mb-8 space-y-4 p-6">
-        <h2 className="flex items-center gap-2 font-semibold text-[var(--heading)]">
-          <Plus className="h-4 w-4 text-cyan-400" /> Add media + narration
-        </h2>
+      <form onSubmit={handleAdd} className="card space-y-4 p-6">
+        <h2 className="font-semibold text-[var(--heading)]">Add media</h2>
 
-        <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-4">
-          <label className="mb-1.5 block text-sm font-semibold text-cyan-400">
-            Narration (customers see this on main site)
+        <div className="flex flex-wrap gap-2">
+          {(["IMAGE", "VIDEO"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() =>
+                setForm((f) => ({
+                  ...f,
+                  type: t,
+                  url: "",
+                  poster: t === "IMAGE" ? "" : f.poster,
+                }))
+              }
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm ring-1 ${
+                form.type === t
+                  ? "bg-cyan-500/15 text-cyan-300 ring-cyan-500/40"
+                  : "text-[var(--muted)] ring-[var(--border)]"
+              }`}
+            >
+              {t === "IMAGE" ? (
+                <ImageIcon className="h-4 w-4" />
+              ) : (
+                <Film className="h-4 w-4" />
+              )}
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <input
+          className="input"
+          placeholder="Title"
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+          required
+        />
+
+        <MediaUploader
+          kind={form.type === "VIDEO" ? "video" : "image"}
+          label={form.type === "VIDEO" ? "Video (MP4)" : "Image"}
+          value={form.url}
+          onChange={(url) => setForm((f) => ({ ...f, url }))}
+        />
+
+        <div>
+          <label className="mb-1 block text-xs text-[var(--muted)]">
+            Or paste https URL
           </label>
-          <textarea
-            className="input min-h-[100px] border-cyan-500/30 bg-black/20"
-            value={form.narration}
-            onChange={(e) => setForm({ ...form, narration: e.target.value })}
-            placeholder="Tell the story of this image or video..."
+          <input
+            className="input"
+            placeholder="https://….public.blob.vercel-storage.com/…"
+            value={form.url.startsWith("https://") ? form.url : ""}
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              setForm((f) => ({ ...f, url: v }));
+            }}
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs text-[var(--muted)]">Title</label>
-            <input
-              required
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="input"
-              placeholder="Project site"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-[var(--muted)]">Type</label>
-            <select
-              value={form.type}
-              onChange={(e) =>
-                setForm({ ...form, type: e.target.value as "IMAGE" | "VIDEO" })
-              }
-              className="input"
-            >
-              <option value="IMAGE">Image</option>
-              <option value="VIDEO">Video</option>
-            </select>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs text-[var(--muted)]">
-              Media URL or upload
-            </label>
-            <input
-              value={form.url.startsWith("data:") ? "[Uploaded file]" : form.url}
-              onChange={(e) => setForm({ ...form, url: e.target.value })}
-              className="input mb-2"
-              placeholder="https://... or upload below"
-            />
-            <input
-              type="file"
-              accept={form.type === "IMAGE" ? "image/*" : "video/*,image/*"}
-              onChange={(e) => onPickFile(e, "url")}
-              className="block w-full text-sm text-[var(--muted)]"
-            />
-            {form.url && (
-              <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)]">
-                {form.type === "IMAGE" || form.url.startsWith("data:image") ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={form.url}
-                    alt="Preview"
-                    className="max-h-48 w-full object-contain bg-black/40"
-                  />
-                ) : (
-                  <video
-                    src={form.url}
-                    controls
-                    playsInline
-                    className="max-h-48 w-full bg-black/40"
-                  />
-                )}
-              </div>
-            )}
-          </div>
-          {form.type === "VIDEO" && (
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-[var(--muted)]">
-                Poster / thumbnail (optional)
-              </label>
-              <input
-                value={
-                  form.poster.startsWith("data:")
-                    ? "[Uploaded poster]"
-                    : form.poster
-                }
-                onChange={(e) => setForm({ ...form, poster: e.target.value })}
-                className="input mb-2"
-                placeholder="https://... thumbnail"
-              />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => onPickFile(e, "poster")}
-                className="block w-full text-sm text-[var(--muted)]"
-              />
-            </div>
-          )}
-        </div>
+        {form.type === "VIDEO" && (
+          <MediaUploader
+            kind="image"
+            label="Poster image (optional)"
+            value={form.poster}
+            onChange={(poster) => setForm((f) => ({ ...f, poster }))}
+          />
+        )}
+
+        <textarea
+          className="input min-h-[80px]"
+          placeholder="Narration (shown to customers on main site)"
+          value={form.narration}
+          onChange={(e) => setForm({ ...form, narration: e.target.value })}
+        />
+
         <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
           <input
             type="checkbox"
             checked={form.published}
             onChange={(e) => setForm({ ...form, published: e.target.checked })}
-            className="rounded"
           />
-          Published (show on main site gallery)
+          Published (available via API for main site)
         </label>
+
         <button
           type="submit"
           disabled={saving || !form.url}
-          className="btn-primary rounded-lg px-5 py-2 text-sm disabled:opacity-50"
+          className="btn-primary px-6 py-2.5 text-sm disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Add to Gallery"}
+          {saving ? "Saving…" : "Add to gallery"}
         </button>
       </form>
 
-      <div className="card p-6">
-        <h2 className="mb-4 font-semibold text-[var(--heading)]">
+      <div>
+        <h2 className="mb-3 font-semibold text-[var(--heading)]">
           Gallery items ({items.length})
         </h2>
         {loading ? (
-          <p className="text-sm text-[var(--muted)]">Loading...</p>
+          <p className="text-sm text-[var(--muted)]">Loading…</p>
         ) : items.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">No media yet.</p>
         ) : (
@@ -300,9 +235,9 @@ export default function AdminGalleryPage() {
             {items.map((item) => (
               <div
                 key={item.id}
-                className="overflow-hidden rounded-xl border border-[var(--border)]"
+                className="overflow-hidden rounded-2xl border border-[var(--border)]"
               >
-                <div className="aspect-video bg-[var(--surface)]">
+                <div className="aspect-video bg-black/40">
                   {item.type === "IMAGE" ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -311,22 +246,17 @@ export default function AdminGalleryPage() {
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <video
+                    <SafeVideo
                       src={item.url}
-                      poster={item.poster || undefined}
-                      controls
-                      playsInline
-                      className="h-full w-full object-cover"
-                      preload="metadata"
+                      poster={item.poster}
+                      className="h-full w-full object-contain"
                     />
                   )}
                 </div>
                 <div className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-medium text-[var(--heading)]">
-                        {item.title}
-                      </p>
+                      <p className="font-medium text-[var(--heading)]">{item.title}</p>
                       <p className="text-xs text-[var(--muted)]">
                         {item.type} · {item.published ? "Published" : "Draft"}
                       </p>
@@ -347,6 +277,9 @@ export default function AdminGalleryPage() {
                   ) : (
                     <p className="mt-2 text-xs text-amber-400">No narration yet</p>
                   )}
+                  <p className="mt-2 truncate text-[10px] text-[var(--muted)]" title={item.url}>
+                    {item.url}
+                  </p>
                 </div>
               </div>
             ))}

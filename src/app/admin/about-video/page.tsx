@@ -2,91 +2,51 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Video, Trash2 } from "lucide-react";
-
-const MAX_FILE_BYTES = 2.5 * 1024 * 1024;
+import { ArrowLeft, Video } from "lucide-react";
+import MediaUploader from "@/components/MediaUploader";
+import SafeVideo from "@/components/SafeVideo";
 
 export default function AdminAboutVideoPage() {
+  const [title, setTitle] = useState("About HAMA");
   const [url, setUrl] = useState("");
   const [poster, setPoster] = useState("");
-  const [title, setTitle] = useState("About promo");
   const [published, setPublished] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/about-video");
-      const data = await res.json();
-      if (data.url) {
-        setUrl(data.url);
-        setPoster(data.poster || "");
-        setTitle(data.title || "About promo");
-        setSaved(true);
-      }
-    } catch {
-      setError("Failed to load current video");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    load();
+    fetch("/api/about-video")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.url) {
+          setUrl(d.url);
+          setPoster(d.poster || "");
+          setTitle(d.title || "About HAMA");
+          setPublished(d.published !== false);
+          setSaved(true);
+        }
+      })
+      .catch(() => setError("Failed to load current video"))
+      .finally(() => setLoading(false));
   }, []);
-
-  function readFileAsDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (file.size > MAX_FILE_BYTES) {
-        reject(
-          new Error(
-            "File too large (max ~2.5MB). Host online and paste the URL instead."
-          )
-        );
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("Could not read file"));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function onPickVideo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError("");
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setUrl(dataUrl);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    }
-  }
-
-  async function onPickPoster(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError("");
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setPoster(dataUrl);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    }
-  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
     try {
+      if (!url.startsWith("https://")) {
+        throw new Error("Upload an MP4 to Blob or paste an https:// URL");
+      }
+      if (url.startsWith("data:")) {
+        throw new Error("Base64 videos are not supported. Use Blob upload.");
+      }
       const res = await fetch("/api/about-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           title,
           url,
@@ -118,128 +78,103 @@ export default function AdminAboutVideoPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <p className="py-12 text-center text-sm text-[var(--muted)]">Loading…</p>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
-      <Link
-        href="/admin"
-        className="mb-2 inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline"
-      >
-        <ArrowLeft className="h-3 w-3" /> Admin
-      </Link>
-      <h1 className="mb-2 flex items-center gap-2 text-2xl font-bold text-[var(--heading)]">
-        <Video className="h-6 w-6 text-cyan-400" /> About page video
-      </h1>
-      <p className="mb-6 text-sm text-[var(--muted)]">
-        Upload or set the short promo video shown on the main website About page
-        (replaces the old logo block).{" "}
-        <a
-          href="https://hama-enterprise-ng.vercel.app/about.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-cyan-400 hover:underline"
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div>
+        <Link
+          href="/admin"
+          className="mb-3 inline-flex items-center gap-1 text-sm text-cyan-400 hover:underline"
         >
-          View About page
-        </a>
-      </p>
+          <ArrowLeft className="h-3 w-3" /> Admin
+        </Link>
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-[var(--heading)]">
+          <Video className="h-6 w-6 text-cyan-400" /> About page video
+        </h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Upload MP4 via Vercel Blob (max 20 MB). iPhone .mov is not supported.
+        </p>
+      </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-[var(--muted)]">Loading...</p>
-      ) : (
-        <form onSubmit={handleSave} className="card space-y-4 p-6">
-          <div>
-            <label className="mb-1 block text-xs text-[var(--muted)]">Title</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="input"
-              placeholder="About promo"
-            />
-          </div>
+      <form onSubmit={handleSave} className="card space-y-4 p-6">
+        <input
+          className="input"
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
 
-          <div>
-            <label className="mb-1 block text-xs text-[var(--muted)]">
-              Video URL or upload (max ~2.5MB for upload)
-            </label>
-            <input
-              value={url.startsWith("data:") ? "[Uploaded video]" : url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="input mb-2"
-              placeholder="https://...mp4 or upload below"
-            />
-            <input
-              type="file"
-              accept="video/*"
-              onChange={onPickVideo}
-              className="block w-full text-sm text-[var(--muted)]"
-            />
-          </div>
+        <MediaUploader
+          kind="video"
+          label="Promo video (MP4)"
+          value={url.startsWith("https://") ? url : ""}
+          onChange={setUrl}
+        />
 
-          <div>
-            <label className="mb-1 block text-xs text-[var(--muted)]">
-              Poster / thumbnail (optional)
-            </label>
-            <input
-              value={poster.startsWith("data:") ? "[Uploaded poster]" : poster}
-              onChange={(e) => setPoster(e.target.value)}
-              className="input mb-2"
-              placeholder="https://...jpg"
-            />
-            <input
-              type="file"
-              accept="image/*"
-              onChange={onPickPoster}
-              className="block w-full text-sm text-[var(--muted)]"
-            />
-          </div>
-
-          {url && (
-            <div className="overflow-hidden rounded-xl border border-[var(--border)]">
-              <video
-                src={url}
-                poster={poster || undefined}
-                controls
-                playsInline
-                className="max-h-64 w-full bg-black"
-              />
-            </div>
-          )}
-
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
-            <input
-              type="checkbox"
-              checked={published}
-              onChange={(e) => setPublished(e.target.checked)}
-              className="rounded"
-            />
-            Published (show on About page)
+        <div>
+          <label className="mb-1 block text-xs text-[var(--muted)]">
+            Or paste https video URL
           </label>
+          <input
+            className="input"
+            placeholder="https://….public.blob.vercel-storage.com/….mp4"
+            value={url.startsWith("https://") ? url : ""}
+            onChange={(e) => setUrl(e.target.value.trim())}
+          />
+        </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={saving || !url}
-              className="btn-primary rounded-lg px-5 py-2 text-sm disabled:opacity-50"
-            >
-              {saving ? "Saving..." : saved ? "Update video" : "Save video"}
-            </button>
-            {saved && (
-              <button
-                type="button"
-                onClick={handleRemove}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-4 w-4" /> Remove
-              </button>
-            )}
+        <MediaUploader
+          kind="image"
+          label="Poster image (optional)"
+          value={poster.startsWith("https://") ? poster : ""}
+          onChange={setPoster}
+        />
+
+        <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+          <input
+            type="checkbox"
+            checked={published}
+            onChange={(e) => setPublished(e.target.checked)}
+          />
+          Published
+        </label>
+
+        {url.startsWith("https://") && (
+          <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-black">
+            <SafeVideo src={url} poster={poster} className="max-h-72 w-full" />
           </div>
-        </form>
-      )}
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            disabled={saving || !url}
+            className="btn-primary px-6 py-2.5 text-sm disabled:opacity-50"
+          >
+            {saving ? "Saving…" : saved ? "Update video" : "Save video"}
+          </button>
+          {saved && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="rounded-full px-4 py-2 text-sm text-red-300 ring-1 ring-red-500/30"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </form>
     </div>
   );
 }

@@ -8,6 +8,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+function assertHttpsMedia(url: string, label: string) {
+  const t = String(url || "").trim();
+  if (!t.startsWith("https://")) {
+    throw new Error(`${label} must be an https:// URL (upload via Blob)`);
+  }
+  if (t.startsWith("data:") || t.startsWith("blob:")) {
+    throw new Error(`${label} cannot be a data/blob URL`);
+  }
+  return t;
+}
+
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
@@ -68,30 +79,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (typeof url === "string" && url.startsWith("data:") && url.length > 3_500_000) {
+    let safeUrl: string;
+    try {
+      safeUrl = assertHttpsMedia(url, "url");
+    } catch (e) {
       return NextResponse.json(
-        { error: "File too large. Use a smaller file or external URL." },
+        { error: e instanceof Error ? e.message : "Invalid url" },
         { status: 400, headers: corsHeaders }
       );
+    }
+
+    let safePoster: string | null = null;
+    if (poster) {
+      try {
+        safePoster = assertHttpsMedia(poster, "poster");
+      } catch (e) {
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : "Invalid poster" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
     }
 
     const item = await prisma.galleryMedia.create({
       data: {
         title: String(title).trim(),
         type,
-        url: String(url),
-        poster: poster ? String(poster) : null,
+        url: safeUrl,
+        poster: safePoster,
         narration: narration ? String(narration).trim() : null,
         published: published !== false,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
       },
     });
 
-    return NextResponse.json({ item }, { status: 201, headers: corsHeaders });
+    return NextResponse.json({ item }, { headers: corsHeaders });
   } catch (error) {
     console.error("Gallery POST error:", error);
     return NextResponse.json(
-      { error: "Failed to create gallery item" },
+      { error: "Failed to save gallery item" },
       { status: 500, headers: corsHeaders }
     );
   }
@@ -107,11 +133,10 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const id = req.nextUrl.searchParams.get("id");
     if (!id) {
       return NextResponse.json(
-        { error: "id is required" },
+        { error: "id required" },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -121,7 +146,7 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     console.error("Gallery DELETE error:", error);
     return NextResponse.json(
-      { error: "Failed to delete gallery item" },
+      { error: "Failed to delete" },
       { status: 500, headers: corsHeaders }
     );
   }
