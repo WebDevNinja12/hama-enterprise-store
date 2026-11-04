@@ -18,16 +18,8 @@ export async function POST() {
     await prisma.$executeRawUnsafe(`
       ALTER TABLE "StoreProduct" ADD COLUMN IF NOT EXISTS "posterUrl" TEXT;
     `);
-
     await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "StoreProduct_fts_idx"
-      ON "StoreProduct"
-      USING GIN (
-        to_tsvector(
-          'english',
-          coalesce(name, '') || ' ' || coalesce(category, '') || ' ' || coalesce(brand, '')
-        )
-      );
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "mustChangePassword" BOOLEAN NOT NULL DEFAULT false;
     `);
 
     await prisma.$executeRawUnsafe(`
@@ -37,7 +29,7 @@ export async function POST() {
 
     return NextResponse.json({
       ok: true,
-      message: "Schema ready (imageUrl, videoUrl, posterUrl + indexes)",
+      message: "Schema ready (products media + mustChangePassword)",
     });
   } catch (err) {
     console.error("ensure-schema error:", err);

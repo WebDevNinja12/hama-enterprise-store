@@ -1,19 +1,62 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, KeyRound, Shield } from "lucide-react";
+import { ArrowLeft, KeyRound, Mail, Shield } from "lucide-react";
 import PasswordInput from "@/components/PasswordInput";
 
 export default function AdminSettingsPage() {
+  const [email, setEmail] = useState("");
+  const [currentEmail, setCurrentEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  async function onSubmit(e: React.FormEvent) {
+  useEffect(() => {
+    fetch("/api/admin/profile", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.user?.email) {
+          setCurrentEmail(d.user.email);
+          setEmail(d.user.email);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function saveEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg("");
+    setErr("");
+    setEmailBusy(true);
+    try {
+      const res = await fetch("/api/admin/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErr(data.error || "Could not update email");
+        return;
+      }
+      setCurrentEmail(data.user?.email || email);
+      setMsg(data.message || "Email updated");
+    } catch {
+      setErr("Network error");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function savePassword(e: React.FormEvent) {
     e.preventDefault();
     setMsg("");
     setErr("");
@@ -66,8 +109,52 @@ export default function AdminSettingsPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-[var(--heading)]">Admin settings</h1>
-          <p className="text-xs text-[var(--muted)]">Password & account security</p>
+          <p className="text-xs text-[var(--muted)]">Email & password</p>
         </div>
+      </div>
+
+      {err && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          {err}
+        </div>
+      )}
+      {msg && (
+        <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+          {msg}
+        </div>
+      )}
+
+      <div className="card mb-6 p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Mail className="h-4 w-4 text-cyan-400" />
+          <h2 className="font-semibold text-[var(--heading)]">Admin email</h2>
+        </div>
+        <p className="mb-3 text-xs text-[var(--muted)]">
+          Current login email:{" "}
+          <strong className="text-[var(--heading)]">
+            {loading ? "…" : currentEmail || "(unknown)"}
+          </strong>
+        </p>
+        <form onSubmit={saveEmail} className="space-y-3">
+          <input
+            type="email"
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="hamaenterprisestore01@gmail.com"
+            required
+          />
+          <button
+            type="submit"
+            disabled={emailBusy}
+            className="btn-primary w-full py-2.5 text-sm disabled:opacity-50"
+          >
+            {emailBusy ? "Saving…" : "Update email"}
+          </button>
+        </form>
+        <p className="mt-2 text-[11px] text-[var(--muted)]">
+          After changing, sign out and sign in again with the new email.
+        </p>
       </div>
 
       <div className="card p-6">
@@ -75,24 +162,7 @@ export default function AdminSettingsPage() {
           <Shield className="h-4 w-4 text-cyan-400" />
           <h2 className="font-semibold text-[var(--heading)]">Change password</h2>
         </div>
-        <p className="mb-5 text-xs text-[var(--muted)]">
-          After changing, use the new password at{" "}
-          <span className="text-[var(--heading)]">/admin/login</span>. Email stays the same
-          unless you change it in the database.
-        </p>
-
-        {err && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {err}
-          </div>
-        )}
-        {msg && (
-          <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-            {msg}
-          </div>
-        )}
-
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={savePassword} className="space-y-4">
           <div>
             <label className="mb-1.5 block text-xs text-[var(--muted)]">
               Current password
@@ -136,9 +206,8 @@ export default function AdminSettingsPage() {
       </div>
 
       <p className="mt-6 text-center text-xs text-[var(--muted)]">
-        Device / session list:{" "}
         <Link href="/admin/security" className="text-cyan-400 hover:underline">
-          Security
+          Security / devices
         </Link>
       </p>
     </div>
