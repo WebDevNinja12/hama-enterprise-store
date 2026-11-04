@@ -10,6 +10,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+function assertHttps(url: string, label: string) {
+  const t = String(url || "").trim();
+  if (!t.startsWith("https://")) {
+    throw new Error(`${label} must be https:// (use Blob upload)`);
+  }
+  if (t.startsWith("data:") || t.startsWith("blob:")) {
+    throw new Error(`${label} cannot be a data/blob URL`);
+  }
+  return t;
+}
+
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
@@ -18,10 +29,18 @@ export async function GET() {
   try {
     const item = await prisma.siteMedia.findUnique({ where: { key: KEY } });
     if (!item || !item.published) {
-      return NextResponse.json({ url: null, poster: null }, { headers: corsHeaders });
+      return NextResponse.json(
+        { url: null, poster: null },
+        { headers: corsHeaders }
+      );
     }
     return NextResponse.json(
-      { url: item.url, poster: item.poster, title: item.title },
+      {
+        url: item.url,
+        poster: item.poster,
+        title: item.title,
+        published: item.published,
+      },
       { headers: corsHeaders }
     );
   } catch (error) {
@@ -53,11 +72,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (url.startsWith("data:") && url.length > 3_500_000) {
+    let safeUrl: string;
+    try {
+      safeUrl = assertHttps(url, "url");
+    } catch (e) {
       return NextResponse.json(
-        { error: "File too large. Use a smaller file or external URL." },
+        { error: e instanceof Error ? e.message : "Invalid url" },
         { status: 400, headers: corsHeaders }
       );
+    }
+
+    let safePoster: string | null = null;
+    if (poster) {
+      try {
+        safePoster = assertHttps(String(poster), "poster");
+      } catch (e) {
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : "Invalid poster" },
+          { status: 400, headers: corsHeaders }
+        );
+      }
     }
 
     const item = await prisma.siteMedia.upsert({
@@ -65,14 +99,14 @@ export async function POST(req: NextRequest) {
       create: {
         key: KEY,
         title: title ? String(title).trim() : "About promo",
-        url: String(url),
-        poster: poster ? String(poster) : null,
+        url: safeUrl,
+        poster: safePoster,
         published: published !== false,
       },
       update: {
         title: title ? String(title).trim() : undefined,
-        url: String(url),
-        poster: poster ? String(poster) : null,
+        url: safeUrl,
+        poster: safePoster,
         published: published !== false,
       },
     });
