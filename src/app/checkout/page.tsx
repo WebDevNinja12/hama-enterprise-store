@@ -85,10 +85,11 @@ export default function CheckoutPage() {
     }
   }, [session]);
 
-  const shipping = useMemo(
-    () => calcShipping(form.state, subtotal),
+  const shippingInfo = useMemo(
+    () => calcShipping(subtotal, form.state),
     [form.state, subtotal]
   );
+  const shipping = shippingInfo.shipping;
   const total = subtotal + shipping;
 
   function copyAccountNumber() {
@@ -160,16 +161,16 @@ export default function CheckoutPage() {
             price: i.price,
             quantity: i.quantity,
           })),
-          customerEmail: form.email.trim().toLowerCase(),
-          customerPhone: form.phone.trim(),
-          shippingName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
-          shippingAddress: form.address.trim(),
-          shippingCity: form.city.trim(),
+          customerEmail: String(form.email || "").trim().toLowerCase(),
+          customerPhone: String(form.phone || "").trim(),
+          shippingName: `${String(form.firstName || "").trim()} ${String(form.lastName || "").trim()}`.trim(),
+          shippingAddress: String(form.address || "").trim(),
+          shippingCity: String(form.city || "").trim(),
           shippingState: form.state,
-          shippingPostal: form.postal.trim() || "000000",
+          shippingPostal: String(form.postal || "").trim() || "000000",
           shippingCountry: "NG",
           paymentMethod,
-          paymentReference: form.transferRef.trim() || undefined,
+          paymentReference: String(form.transferRef || "").trim() || undefined,
           notes:
             paymentMethod === "bank"
               ? `Bank transfer to ${BANK_DETAILS.accountNumber}. Ref: ${form.transferRef || "n/a"}`
@@ -304,8 +305,8 @@ export default function CheckoutPage() {
                 onChange={(e) => setForm({ ...form, state: e.target.value })}
               >
                 {NIGERIA_STATES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                  <option key={s.name} value={s.name}>
+                    {s.name}
                   </option>
                 ))}
               </select>
