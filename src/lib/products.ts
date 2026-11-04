@@ -26,7 +26,7 @@ export function productImage(p: {
   image?: string | null;
   imageUrl?: string | null;
 }) {
-  const url = (p.imageUrl || p.image || "").trim();
+  const url = String(p.imageUrl || p.image || "").trim();
   if (
     url &&
     (url.startsWith("http://") ||

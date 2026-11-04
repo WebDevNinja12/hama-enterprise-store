@@ -1,9 +1,6 @@
-/** Nigeria shipping rules — amounts in NGN */
+/** Nigeria shipping zones and rates (NGN). */
 
-import { formatNgn } from "./currency";
-
-/** Free shipping when subtotal is at least this (NGN) */
-export const FREE_SHIPPING_MIN = 150_000;
+export const FREE_SHIPPING_MIN = 50_000;
 
 export type ShippingZone =
   | "lagos"
@@ -69,14 +66,23 @@ const ZONE_RATES: Record<ShippingZone, number> = {
   other: 7_500,
 };
 
-export function zoneForState(stateName: string): ShippingZone {
-  const found = NIGERIA_STATES.find(
-    (s) => s.name.toLowerCase() === stateName.trim().toLowerCase()
-  );
+export function zoneForState(
+  stateName: string | number | null | undefined
+): ShippingZone {
+  const name = String(stateName ?? "").trim().toLowerCase();
+  if (!name) return "other";
+  const found = NIGERIA_STATES.find((s) => s.name.toLowerCase() === name);
   return found?.zone ?? "other";
 }
 
-export function calcShipping(subtotal: number, stateName: string): {
+function formatNgn(n: number) {
+  return `₦${Math.round(n).toLocaleString("en-NG")}`;
+}
+
+export function calcShipping(
+  subtotal: number,
+  stateName: string
+): {
   shipping: number;
   zone: ShippingZone;
   free: boolean;
@@ -99,11 +105,14 @@ export function calcShipping(subtotal: number, stateName: string): {
     shipping,
     zone,
     free: false,
-    label: `Standard delivery — ${stateName || "Nigeria"}`,
+    label: `Shipping to ${String(stateName || "Nigeria")} (${zone.replace(/_/g, " ")})`,
   };
 }
 
+/** Basic NG phone check: 11 digits starting with 0, or +234 */
 export function isValidNgPhone(phone: string): boolean {
-  const digits = phone.replace(/\D/g, "");
-  return digits.length >= 10 && digits.length <= 14;
+  const p = String(phone || "").replace(/\s|-/g, "");
+  if (/^0[789]\d{9}$/.test(p)) return true;
+  if (/^\+?234[789]\d{9}$/.test(p)) return true;
+  return p.length >= 10 && p.length <= 15;
 }
